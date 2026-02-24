@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WehbeGroup Catalog</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-light">
+    
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+      <div class="container d-flex justify-content-between">
+        <a class="navbar-brand fw-bold" href="{% url 'category_list' %}">WehbeGroup</a>
+        <a href="/admin" class="btn btn-outline-dark btn-sm">
+          Admin Login
+        </a>
+      </div>
+    </nav>
+
+    <div class="container">
+      <h1 class="text-center mb-4">Product Categories</h1>
+
+      <div class="row justify-content-center mb-5">
+        <div class="col-md-8">
+          <form method="get" action="" class="d-flex">
+            <input 
+                class="form-control me-2" 
+                type="search" 
+                name="q" 
+                placeholder="Search for items (e.g. Pepsi)..." 
+                aria-label="Search"
+            >
+            <button class="btn btn-primary" type="submit">Search</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="row">
+        {% for category in categories %}
+        <div class="col-md-4 mb-4">
+          <div class="card shadow-sm h-100 text-center p-4">
+            <div class="card-body">
+              <h2 class="card-title">{{ category.name }}</h2>
+              
+              <a href="{% url 'item_list' category.id %}" class="btn btn-primary mt-3">
+                View Items
+              </a>
+
+              {% if user.is_authenticated %}
+              <div class="mt-2">
+                  <a href="{% url 'duplicate_category' category.id %}" class="btn btn-sm btn-outline-success w-100">
+                     📋 Duplicate (+%)
+                  </a>
+              </div>
+              {% endif %}
+              
+            </div>
+          </div>
+        </div>
+        {% empty %}
+          <div class="text-center">
+            <p class="text-muted">No categories found.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </body>
+</html>

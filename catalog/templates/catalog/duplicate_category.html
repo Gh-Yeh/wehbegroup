@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Duplicate Category</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow">
+                    <div class="card-header bg-warning text-dark">
+                        <h3 class="mb-0">Duplicate: {{ category.name }}</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            This will copy all items from <strong>{{ category.name }}</strong> into a new category.
+                        </p>
+
+                        <form method="post">
+                            {% csrf_token %}
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">New Category Name</label>
+                                <input type="text" name="new_name" class="form-control" 
+                                       value="{{ category.name }} - Copy" required>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Price Adjustment (%)</label>
+                                <div class="input-group">
+                                    <input type="number" name="percentage" class="form-control" 
+                                           step="0.01" value="0" required>
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="form-text text-muted">
+                                    Use positive numbers to increase (e.g., <strong>3</strong> for +3%)<br>
+                                    Use negative numbers to decrease (e.g., <strong>-5</strong> for -5%)
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between mt-4">
+                                <a href="{% url 'category_list' %}" class="btn btn-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-success px-4">Create Duplicate</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

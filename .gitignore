@@ -1,0 +1,13 @@
+# Environments
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Database
+db.sqlite3
+
+# Uploaded Media (We back this up manually, not on GitHub)
+media/
