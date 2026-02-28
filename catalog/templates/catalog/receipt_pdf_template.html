@@ -1,0 +1,256 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      @page {
+        size: A4;
+        margin: 2cm 1.5cm 2cm 1.5cm;
+
+        @frame header_frame {
+          -pdf-frame-content: headerContent;
+          top: 0.5cm;
+          margin-left: 1.5cm;
+          margin-right: 1.5cm;
+          height: 1cm;
+        }
+
+        @frame footer_frame {
+          -pdf-frame-content: footerContent;
+          bottom: 0.5cm;
+          margin-left: 1.5cm;
+          margin-right: 1.5cm;
+          height: 1cm;
+        }
+      }
+
+      body {
+        font-family: Helvetica, sans-serif;
+        color: #333;
+        font-size: 12px;
+      }
+
+      /* --- HEADER --- */
+      table.header-table {
+        width: 100%;
+        border-bottom: 2px solid #2c3e50;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+      }
+
+      .header-logo {
+        width: 50%;
+        text-align: left;
+      }
+      .header-info {
+        width: 50%;
+        text-align: right;
+        vertical-align: top;
+      }
+
+      .invoice-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+      }
+
+      /* --- CLIENT INFO --- */
+      table.info-table {
+        width: 100%;
+        margin-bottom: 30px;
+      }
+
+      .bill-to {
+        width: 50%;
+      }
+      .order-meta {
+        width: 50%;
+        text-align: right;
+      }
+
+      .section-title {
+        font-size: 10px;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      /* --- ITEMS TABLE --- */
+      table.items-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .items-table th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #2c3e50;
+        padding: 8px;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 10px;
+        text-align: center;
+      }
+
+      .items-table td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #ecf0f1;
+        vertical-align: middle;
+      }
+
+      .col-item {
+        width: 55%;
+        text-align: left;
+      }
+      .col-price {
+        width: 15%;
+        text-align: center;
+      }
+      .col-qty {
+        width: 15%;
+        text-align: center;
+      }
+      .col-total {
+        width: 15%;
+        text-align: right;
+        font-weight: bold;
+      }
+
+      .item-name {
+        font-weight: bold;
+        font-size: 13px;
+        color: #000;
+      }
+      .item-desc {
+        font-size: 10px;
+        color: #7f8c8d;
+      }
+
+      /* --- TOTALS --- */
+      table.totals-table {
+        width: 100%;
+        margin-top: 20px;
+      }
+      .totals-table td {
+        padding: 5px;
+      }
+      .grand-total-label {
+        font-size: 16px;
+        font-weight: bold;
+        text-align: right;
+        width: 85%;
+      }
+      .grand-total-value {
+        font-size: 16px;
+        font-weight: bold;
+        color: #4d1513;
+        text-align: right;
+        width: 15%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="headerContent"
+      style="text-align: right; color: #888; font-size: 10px"
+    >
+      Order #{{ order.id }} - {{ order.client.name }}
+    </div>
+
+    <table class="header-table">
+      <tr>
+        <td class="header-logo">
+          <img src="{{ logo_path }}" width="130" />
+          <div style="font-size: 10px; color: #7f8c8d; margin-top: 5px">
+            Tel: +961 03 668 597
+          </div>
+        </td>
+        <td class="header-info">
+          <div class="invoice-title">RECEIPT</div>
+          <div><strong>Order #:</strong> {{ order.id }}</div>
+          <div><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="info-table">
+      <tr>
+        <td class="bill-to">
+          <div class="section-title">Billed To</div>
+          <div style="font-size: 14px; font-weight: bold; color: #000">
+            {{ order.client.name }}
+          </div>
+
+          {% if order.client.shop_name %}
+          <div>{{ order.client.shop_name }}</div>
+          {% endif %} {% if order.client.phone_number %}
+          <div>{{ order.client.phone_number }}</div>
+          {% endif %} {% if order.client.address %}
+          <div>{{ order.client.address }}</div>
+          {% endif %}
+        </td>
+        <td class="order-meta">
+          {% if order.delivery_date %}
+          <div class="section-title">Delivery Target</div>
+          <div style="font-size: 14px; font-weight: bold; color: #c0392b">
+            {{ order.delivery_date|date:"M d, Y" }}
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="col-item">Description</th>
+          <th class="col-price">Unit Price</th>
+          <th class="col-qty">Quantity</th>
+          <th class="col-total">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order_item in order_items %}
+        <tr>
+          <td class="col-item">
+            <div class="item-name">
+              {% if order_item.item %}
+              <span>{{ order_item.item.name }}</span>
+              {% else %}
+              <span>Deleted Item</span>
+              {% endif %}
+            </div>
+            <div class="item-desc">
+              {% if order_item.item %}
+              <span>{{ order_item.item.description }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="col-price">${{ order_item.price_at_order }}</td>
+          <td class="col-qty">{{ order_item.quantity }}</td>
+          <td class="col-total">${{ order_item.total_price }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="totals-table">
+      <tr>
+        <td class="grand-total-label">GRAND TOTAL:</td>
+        <td class="grand-total-value">${{ order.total_price }}</td>
+      </tr>
+    </table>
+
+    <div
+      id="footerContent"
+      style="
+        text-align: center;
+        border-top: 1px solid #ecf0f1;
+        padding-top: 5px;
+      "
+    >
+      Thank you for your business! - WehbeGroup
+    </div>
+  </body>
+</html>

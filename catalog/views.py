@@ -1,5 +1,7 @@
+import os
 from datetime import datetime
 from decimal import Decimal
+from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
@@ -74,10 +76,14 @@ def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
     items = category.items.all().order_by(Lower("name"))
 
+    # --- DYNAMIC LOGO PATH ---
+    logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
+
     context = {
         "category": category,
         "items": items,
         "pagesize": "A4",
+        "logo_path": logo_path,
     }
 
     pdf = render_to_pdf("catalog/pdf_template.html", context)
@@ -271,7 +277,6 @@ def checkout(request):
         request.session["ticket_cart"] = {}
         request.session["is_ordering"] = False
 
-        # --- PHASE 2: Redirect to the Client's page after saving! ---
         return redirect("client_detail", client_id=client.id)
 
     clients = Client.objects.all().order_by("name")
@@ -290,7 +295,6 @@ def checkout(request):
 
 @login_required
 def client_list(request):
-    # Get all clients alphabetically
     clients = Client.objects.all().order_by("name")
     return render(request, "catalog/client_list.html", {"clients": clients})
 
@@ -298,9 +302,7 @@ def client_list(request):
 @login_required
 def client_detail(request, client_id):
     client = get_object_or_404(Client, id=client_id)
-    # Get all orders for this client, newest first
     orders = client.orders.all().order_by("-created_at")
-
     return render(
         request, "catalog/client_detail.html", {"client": client, "orders": orders}
     )
@@ -310,9 +312,47 @@ def client_detail(request, client_id):
 def order_detail(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     order_items = order.items.all()
-
     return render(
         request,
         "catalog/order_detail.html",
         {"order": order, "order_items": order_items},
     )
+
+
+@login_required
+def order_pdf(request, order_id):
+    """Generates a formal receipt PDF for a specific order."""
+    order = get_object_or_404(Order, id=order_id)
+    order_items = order.items.all()
+
+    # --- DYNAMIC LOGO PATH ---
+    logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
+
+    context = {
+        "order": order,
+        "order_items": order_items,
+        "pagesize": "A4",
+        "logo_path": logo_path,
+    }
+
+    pdf = render_to_pdf("catalog/receipt_pdf_template.html", context)
+
+    if pdf:
+        response = HttpResponse(pdf, content_type="application/pdf")
+
+        # --- NEW: Calculate the specific order number for this client ---
+        # This counts how many orders this client had up to (and including) this current order
+        client_order_number = Order.objects.filter(
+            client=order.client, id__lte=order.id
+        ).count()
+
+        # Create the new filename (e.g., "Ghady Yehya_#1.pdf")
+        filename = f"{order.client.name}_#{client_order_number}.pdf"
+
+        # Note: We added quotes around "{filename}" to ensure browsers
+        # don't cut the name off if the client's name has spaces!
+        content = f'attachment; filename="{filename}"'
+        response["Content-Disposition"] = content
+        return response
+
+    return HttpResponse("Error generating PDF")
