@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+  <head>
+    <title>{{ client.name }} - WehbeGroup</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+      <div class="container d-flex justify-content-between align-items-center">
+        <a class="navbar-brand fw-bold" href="{% url 'client_list' %}">
+          &larr; Back to Clients
+        </a>
+      </div>
+    </nav>
+
+    <div class="container">
+      <div class="card shadow-sm mb-5 border-primary">
+        <div class="card-body p-4 text-center">
+          <h2 class="mb-1">{{ client.name }}</h2>
+
+          {% if client.shop_name %}
+          <h5 class="text-primary mb-3">{{ client.shop_name }}</h5>
+          {% endif %}
+          <p class="text-muted mb-0">
+            {% if client.phone_number %}
+            <span class="me-2">📞 {{ client.phone_number }}</span>
+            {% endif %} {% if client.address %}
+            <span>📍 {{ client.address }}</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <h3 class="mb-4">Order History</h3>
+
+      <div class="list-group shadow-sm mb-5">
+        {% for order in orders %}
+        <a
+          href="{% url 'order_detail' order.id %}"
+          class="list-group-item list-group-item-action p-4 d-flex justify-content-between align-items-center"
+        >
+          <div>
+            <h5 class="mb-1">Order #{{ order.id }}</h5>
+            <small class="text-muted">
+              Placed on: {{ order.created_at|date:"F j, Y, g:i a" }}
+            </small>
+
+            {% if order.delivery_date %}
+            <br />
+            <small class="text-danger fw-bold">
+              Delivery Expected: {{ order.delivery_date|date:"F j, Y" }}
+            </small>
+            {% endif %}
+          </div>
+
+          <div class="text-end">
+            <h4 class="text-success mb-0">${{ order.total_price }}</h4>
+            <small class="text-primary">View Receipt &rarr;</small>
+          </div>
+        </a>
+        {% empty %}
+        <div class="list-group-item p-4 text-center text-muted">
+          This client has no orders yet.
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </body>
+</html>

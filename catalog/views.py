@@ -6,7 +6,6 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
 
-# --- PHASE 2: Added the new Models to the import ---
 from .models import Category, Item, Client, Order, OrderItem
 from .forms import ItemForm
 from .utils import render_to_pdf
@@ -213,14 +212,11 @@ def update_cart_item(request, item_id):
 
 @login_required
 def checkout(request):
-    """Handles the final Checkout screen and saves the Order to the database."""
     cart = request.session.get("ticket_cart", {})
 
-    # If they click save but have no items, send them back
     if not cart:
         return redirect("category_list")
 
-    # 1. Translate the session cart into actual items and calculate totals
     cart_items = []
     cart_total = Decimal(0)
 
@@ -235,64 +231,88 @@ def checkout(request):
         except Item.DoesNotExist:
             pass
 
-    # 2. Process the form submission
     if request.method == "POST":
         client_id = request.POST.get("client_id")
 
-        # A. Determine the Client
         if client_id:
-            # They picked someone from the dropdown
             client = get_object_or_404(Client, id=client_id)
         else:
-            # They typed in a new client
             new_name = request.POST.get("new_client_name")
             new_shop = request.POST.get("new_client_shop")
             new_phone = request.POST.get("new_client_phone")
             new_address = request.POST.get("new_client_address")
 
-            # get_or_create prevents duplicates if they typed the exact same name/shop
             client, created = Client.objects.get_or_create(
                 name=new_name,
                 shop_name=new_shop,
                 defaults={"phone_number": new_phone, "address": new_address},
             )
 
-        # B. Create the blank Order receipt
         delivery_date = request.POST.get("delivery_date") or None
         order = Order.objects.create(
             client=client,
             delivery_date=delivery_date,
-            total_price=0,  # We will update this in a second
+            total_price=0,
         )
 
-        # C. Lock in the items and their current prices
         actual_total = Decimal(0)
         for c_item in cart_items:
             OrderItem.objects.create(
                 order=order,
                 item=c_item["item"],
                 quantity=c_item["quantity"],
-                price_at_order=c_item["item"].price,  # <--- Locks in the price forever!
+                price_at_order=c_item["item"].price,
             )
             actual_total += c_item["item"].price * c_item["quantity"]
 
-        # D. Update the final order total
         order.total_price = actual_total
         order.save()
 
-        # E. Clean up the Session to start fresh
         request.session["ticket_cart"] = {}
         request.session["is_ordering"] = False
 
-        # Go back to the homepage (We will change this to the Client page in Chunk 5)
-        return redirect("category_list")
+        # --- PHASE 2: Redirect to the Client's page after saving! ---
+        return redirect("client_detail", client_id=client.id)
 
-    # 3. GET request: Show the Checkout Screen
-    # Get all clients alphabetically for the dropdown
     clients = Client.objects.all().order_by("name")
 
     return render(
         request,
         "catalog/checkout.html",
         {"cart_items": cart_items, "cart_total": cart_total, "clients": clients},
+    )
+
+
+# ==========================================
+# PHASE 2: CLIENT DASHBOARD VIEWS
+# ==========================================
+
+
+@login_required
+def client_list(request):
+    # Get all clients alphabetically
+    clients = Client.objects.all().order_by("name")
+    return render(request, "catalog/client_list.html", {"clients": clients})
+
+
+@login_required
+def client_detail(request, client_id):
+    client = get_object_or_404(Client, id=client_id)
+    # Get all orders for this client, newest first
+    orders = client.orders.all().order_by("-created_at")
+
+    return render(
+        request, "catalog/client_detail.html", {"client": client, "orders": orders}
+    )
+
+
+@login_required
+def order_detail(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    order_items = order.items.all()
+
+    return render(
+        request,
+        "catalog/order_detail.html",
+        {"order": order, "order_items": order_items},
     )

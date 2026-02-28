@@ -32,7 +32,14 @@
             class="btn btn-primary btn-sm me-2"
             >🛒 Open New Ticket</a
           >
-          {% endif %} {% endif %}
+          {% endif %}
+
+          <a
+            href="{% url 'client_list' %}"
+            class="btn btn-outline-primary btn-sm me-2"
+            >👥 Clients & Orders</a
+          >
+          {% endif %}
 
           <a href="/admin" class="btn btn-outline-dark btn-sm"> Admin Login </a>
         </div>
@@ -70,9 +77,8 @@
               <a
                 href="{% url 'item_list' category.id %}"
                 class="btn btn-primary mt-3"
+                >View Items</a
               >
-                View Items
-              </a>
 
               {% if user.is_authenticated %}
               <div class="mt-2">
