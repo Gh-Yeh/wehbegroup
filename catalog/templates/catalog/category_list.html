@@ -18,7 +18,9 @@
 
         <div>
           {% if user.is_authenticated %} {% if is_ordering %}
-          <a href="#" class="btn btn-success btn-sm me-2">💾 Save Ticket</a>
+          <a href="{% url 'checkout' %}" class="btn btn-success btn-sm me-2"
+            >💾 Save Ticket</a
+          >
           <a
             href="{% url 'toggle_order_mode' %}"
             class="btn btn-danger btn-sm me-2"

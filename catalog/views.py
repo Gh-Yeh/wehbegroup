@@ -1,11 +1,13 @@
 from datetime import datetime
-from decimal import Decimal  # <--- Needed for the price math
+from decimal import Decimal
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
-from django.db.models.functions import Lower  # <--- NEW: Smart Sort Tool
+from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
-from .models import Category, Item
+
+# --- PHASE 2: Added the new Models to the import ---
+from .models import Category, Item, Client, Order, OrderItem
 from .forms import ItemForm
 from .utils import render_to_pdf
 
@@ -43,7 +45,6 @@ def item_list(request, category_id):
     category = get_object_or_404(Category, id=category_id)
     items = category.items.all().order_by(Lower("name"))
 
-    # --- PHASE 2: Fetch Cart Data for the Sidebar ---
     cart = request.session.get("ticket_cart", {})
     cart_items = []
     cart_item_ids = []
@@ -51,12 +52,9 @@ def item_list(request, category_id):
     if is_ordering:
         for item_id_str, qty in cart.items():
             try:
-                # Find the actual item in the database
                 cart_item = Item.objects.get(id=int(item_id_str))
                 cart_items.append({"item": cart_item, "quantity": qty})
-                cart_item_ids.append(
-                    cart_item.id
-                )  # Keep a list of IDs for highlighting
+                cart_item_ids.append(cart_item.id)
             except Item.DoesNotExist:
                 pass
 
@@ -67,8 +65,8 @@ def item_list(request, category_id):
             "category": category,
             "items": items,
             "is_ordering": is_ordering,
-            "cart_items": cart_items,  # Pass sidebar data
-            "cart_item_ids": cart_item_ids,  # Pass highlight data
+            "cart_items": cart_items,
+            "cart_item_ids": cart_item_ids,
         },
     )
 
@@ -192,11 +190,10 @@ def add_to_ticket(request, item_id):
 
 @login_required
 def update_cart_item(request, item_id):
-    """Handles Updating or Removing an item directly from the Sidebar"""
     if request.method == "POST":
         cart = request.session.get("ticket_cart", {})
         item_id_str = str(item_id)
-        action = request.POST.get("action")  # Can be 'update' or 'remove'
+        action = request.POST.get("action")
 
         if action == "remove":
             if item_id_str in cart:
@@ -211,6 +208,91 @@ def update_cart_item(request, item_id):
                     del cart[item_id_str]
 
         request.session["ticket_cart"] = cart
-
-        # This magically redirects the user to whatever page they were just on!
         return redirect(request.META.get("HTTP_REFERER", "category_list"))
+
+
+@login_required
+def checkout(request):
+    """Handles the final Checkout screen and saves the Order to the database."""
+    cart = request.session.get("ticket_cart", {})
+
+    # If they click save but have no items, send them back
+    if not cart:
+        return redirect("category_list")
+
+    # 1. Translate the session cart into actual items and calculate totals
+    cart_items = []
+    cart_total = Decimal(0)
+
+    for item_id_str, qty in cart.items():
+        try:
+            item = Item.objects.get(id=int(item_id_str))
+            total_item_price = item.price * qty
+            cart_items.append(
+                {"item": item, "quantity": qty, "total_price": total_item_price}
+            )
+            cart_total += total_item_price
+        except Item.DoesNotExist:
+            pass
+
+    # 2. Process the form submission
+    if request.method == "POST":
+        client_id = request.POST.get("client_id")
+
+        # A. Determine the Client
+        if client_id:
+            # They picked someone from the dropdown
+            client = get_object_or_404(Client, id=client_id)
+        else:
+            # They typed in a new client
+            new_name = request.POST.get("new_client_name")
+            new_shop = request.POST.get("new_client_shop")
+            new_phone = request.POST.get("new_client_phone")
+            new_address = request.POST.get("new_client_address")
+
+            # get_or_create prevents duplicates if they typed the exact same name/shop
+            client, created = Client.objects.get_or_create(
+                name=new_name,
+                shop_name=new_shop,
+                defaults={"phone_number": new_phone, "address": new_address},
+            )
+
+        # B. Create the blank Order receipt
+        delivery_date = request.POST.get("delivery_date") or None
+        order = Order.objects.create(
+            client=client,
+            delivery_date=delivery_date,
+            total_price=0,  # We will update this in a second
+        )
+
+        # C. Lock in the items and their current prices
+        actual_total = Decimal(0)
+        for c_item in cart_items:
+            OrderItem.objects.create(
+                order=order,
+                item=c_item["item"],
+                quantity=c_item["quantity"],
+                price_at_order=c_item["item"].price,  # <--- Locks in the price forever!
+            )
+            actual_total += c_item["item"].price * c_item["quantity"]
+
+        # D. Update the final order total
+        order.total_price = actual_total
+        order.save()
+
+        # E. Clean up the Session to start fresh
+        request.session["ticket_cart"] = {}
+        request.session["is_ordering"] = False
+
+        # Go back to the homepage (We will change this to the Client page in Chunk 5)
+        return redirect("category_list")
+
+    # 3. GET request: Show the Checkout Screen
+    # Get all clients alphabetically for the dropdown
+    clients = Client.objects.all().order_by("name")
+
+    return render(
+        request,
+        "catalog/checkout.html",
+        {"cart_items": cart_items, "cart_total": cart_total, "clients": clients},
+    )

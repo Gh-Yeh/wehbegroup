@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Checkout - WehbeGroup</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+      <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'category_list' %}"
+          >WehbeGroup POS</a
+        >
+      </div>
+    </nav>
+
+    <div class="container">
+      <h2 class="mb-4 text-center">Finalize Ticket</h2>
+
+      <div class="row">
+        <div class="col-md-5 mb-4">
+          <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white fw-bold">
+              🛒 Order Summary
+            </div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for c_item in cart_items %}
+                <li
+                  class="list-group-item d-flex justify-content-between lh-sm p-3"
+                >
+                  <div>
+                    <h6 class="my-0">{{ c_item.item.name }}</h6>
+                    <small class="text-muted"
+                      >{{ c_item.quantity }} x ${{ c_item.item.price }}</small
+                    >
+                  </div>
+                  <span class="text-muted fw-bold"
+                    >${{ c_item.total_price }}</span
+                  >
+                </li>
+                {% endfor %}
+                <li
+                  class="list-group-item d-flex justify-content-between bg-light p-3"
+                >
+                  <span class="fw-bold">Total (USD)</span>
+                  <strong class="fs-5 text-success">${{ cart_total }}</strong>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-7">
+          <div class="card shadow-sm">
+            <div class="card-body p-4">
+              <h4 class="mb-3">Client Information</h4>
+
+              <form method="post" action="{% url 'checkout' %}">
+                {% csrf_token %}
+
+                <div class="mb-4 p-3 bg-light border rounded">
+                  <label class="form-label fw-bold text-primary"
+                    >Select Existing Client:</label
+                  >
+                  <select
+                    name="client_id"
+                    id="clientSelect"
+                    class="form-select border-primary"
+                  >
+                    <option value="">-- Create a New Client Below --</option>
+                    {% for client in clients %}
+                    <option value="{{ client.id }}">
+                      {{ client.name }} {% if client.shop_name %}({{
+                      client.shop_name }}){% endif %}
+                    </option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div id="newClientFields">
+                  <h5 class="text-muted mb-3">Or Enter New Client Details:</h5>
+
+                  <div class="row g-3 mb-3">
+                    <div class="col-sm-6">
+                      <label class="form-label fw-bold">Customer Name *</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        name="new_client_name"
+                        id="new_client_name"
+                        required
+                      />
+                    </div>
+                    <div class="col-sm-6">
+                      <label class="form-label fw-bold">Shop Name</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        name="new_client_shop"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-bold">Phone Number</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      name="new_client_phone"
+                    />
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label fw-bold">Address</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      name="new_client_address"
+                    />
+                  </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h4 class="mb-3">Delivery Information</h4>
+                <div class="mb-4">
+                  <label class="form-label fw-bold"
+                    >Delivery Date (Optional)</label
+                  >
+                  <input
+                    type="date"
+                    class="form-control w-50"
+                    name="delivery_date"
+                  />
+                  <small class="text-muted"
+                    >Leave blank if delivering immediately.</small
+                  >
+                </div>
+
+                <hr class="my-4" />
+
+                <div class="d-flex justify-content-between">
+                  <a
+                    href="{% url 'category_list' %}"
+                    class="btn btn-secondary btn-lg"
+                    >Back to Catalog</a
+                  >
+                  <button
+                    class="btn btn-success btn-lg px-5 fw-bold"
+                    type="submit"
+                  >
+                    Finalize & Save Order
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document
+        .getElementById("clientSelect")
+        .addEventListener("change", function () {
+          var newClientDiv = document.getElementById("newClientFields");
+          var nameInput = document.getElementById("new_client_name");
+
+          if (this.value) {
+            // An existing client was chosen, hide the new fields
+            newClientDiv.style.display = "none";
+            nameInput.removeAttribute("required");
+          } else {
+            // Blank was chosen, show the new fields
+            newClientDiv.style.display = "block";
+            nameInput.setAttribute("required", "required");
+          }
+        });
+    </script>
+  </body>
+</html>
