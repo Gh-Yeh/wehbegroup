@@ -71,12 +71,14 @@
                     class="form-select border-primary"
                   >
                     <option value="">-- Create a New Client Below --</option>
-                    {% for client in clients %}
+
+                    {% for client in clients %} {% if client.shop_name %}
                     <option value="{{ client.id }}">
-                      {{ client.name }} {% if client.shop_name %}({{
-                      client.shop_name }}){% endif %}
+                      {{ client.name }} - {{ client.shop_name }}
                     </option>
-                    {% endfor %}
+                    {% else %}
+                    <option value="{{ client.id }}">{{ client.name }}</option>
+                    {% endif %} {% endfor %}
                   </select>
                 </div>
 
