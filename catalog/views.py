@@ -11,14 +11,10 @@ from .utils import render_to_pdf
 
 
 def category_list(request):
-    # --- PHASE 2: Check if Order Mode is ON ---
     is_ordering = request.session.get("is_ordering", False)
-
-    # 1. Check if the user is searching for something
     query = request.GET.get("q")
 
     if query:
-        # SEARCH MODE: Look for items matching the name or description
         items = Item.objects.filter(
             Q(name__icontains=query) | Q(description__icontains=query)
         ).order_by(Lower("name"))
@@ -30,25 +26,50 @@ def category_list(request):
                 "items": items,
                 "search_query": query,
                 "category": None,
-                "is_ordering": is_ordering,  # Pass to template
+                "is_ordering": is_ordering,
             },
         )
     else:
-        # NORMAL MODE: Show the Category Buttons
         categories = Category.objects.all()
         return render(
             request,
             "catalog/category_list.html",
-            {"categories": categories, "is_ordering": is_ordering},  # Pass to template
+            {"categories": categories, "is_ordering": is_ordering},
         )
 
 
 def item_list(request, category_id):
+    is_ordering = request.session.get("is_ordering", False)
     category = get_object_or_404(Category, id=category_id)
     items = category.items.all().order_by(Lower("name"))
 
+    # --- PHASE 2: Fetch Cart Data for the Sidebar ---
+    cart = request.session.get("ticket_cart", {})
+    cart_items = []
+    cart_item_ids = []
+
+    if is_ordering:
+        for item_id_str, qty in cart.items():
+            try:
+                # Find the actual item in the database
+                cart_item = Item.objects.get(id=int(item_id_str))
+                cart_items.append({"item": cart_item, "quantity": qty})
+                cart_item_ids.append(
+                    cart_item.id
+                )  # Keep a list of IDs for highlighting
+            except Item.DoesNotExist:
+                pass
+
     return render(
-        request, "catalog/item_list.html", {"category": category, "items": items}
+        request,
+        "catalog/item_list.html",
+        {
+            "category": category,
+            "items": items,
+            "is_ordering": is_ordering,
+            "cart_items": cart_items,  # Pass sidebar data
+            "cart_item_ids": cart_item_ids,  # Pass highlight data
+        },
     )
 
 
@@ -138,12 +159,58 @@ def duplicate_category(request, category_id):
 # ==========================================
 @login_required
 def toggle_order_mode(request):
-    """
-    Turns 'Order Mode' ON or OFF by saving it to the browser's Session.
-    """
-    # Look at the current state, flip it to the opposite
     current_state = request.session.get("is_ordering", False)
     request.session["is_ordering"] = not current_state
 
-    # Send them right back to the main category list
+    if current_state == True:
+        request.session["ticket_cart"] = {}
+
     return redirect("category_list")
+
+
+@login_required
+def add_to_ticket(request, item_id):
+    if request.method == "POST":
+        item = get_object_or_404(Item, id=item_id)
+        quantity = int(request.POST.get("quantity", 1))
+
+        cart = request.session.get("ticket_cart", {})
+        item_id_str = str(item_id)
+
+        if item_id_str in cart:
+            cart[item_id_str] += quantity
+        else:
+            cart[item_id_str] = quantity
+
+        request.session["ticket_cart"] = cart
+
+        if item.category:
+            return redirect("item_list", category_id=item.category.id)
+
+    return redirect("category_list")
+
+
+@login_required
+def update_cart_item(request, item_id):
+    """Handles Updating or Removing an item directly from the Sidebar"""
+    if request.method == "POST":
+        cart = request.session.get("ticket_cart", {})
+        item_id_str = str(item_id)
+        action = request.POST.get("action")  # Can be 'update' or 'remove'
+
+        if action == "remove":
+            if item_id_str in cart:
+                del cart[item_id_str]
+
+        elif action == "update":
+            new_qty = int(request.POST.get("quantity", 1))
+            if new_qty > 0:
+                cart[item_id_str] = new_qty
+            else:
+                if item_id_str in cart:
+                    del cart[item_id_str]
+
+        request.session["ticket_cart"] = cart
+
+        # This magically redirects the user to whatever page they were just on!
+        return redirect(request.META.get("HTTP_REFERER", "category_list"))
