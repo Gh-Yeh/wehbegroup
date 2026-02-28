@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from django.db.models.functions import Lower
@@ -17,6 +17,18 @@ def category_list(request):
     is_ordering = request.session.get("is_ordering", False)
     query = request.GET.get("q")
 
+    # --- PHASE 2: Fetch Cart Data for the Sidebar on the Home Page ---
+    cart = request.session.get("ticket_cart", {})
+    cart_items = []
+
+    if is_ordering:
+        for item_id_str, qty in cart.items():
+            try:
+                cart_item = Item.objects.get(id=int(item_id_str))
+                cart_items.append({"item": cart_item, "quantity": qty})
+            except Item.DoesNotExist:
+                pass
+
     if query:
         items = Item.objects.filter(
             Q(name__icontains=query) | Q(description__icontains=query)
@@ -30,6 +42,7 @@ def category_list(request):
                 "search_query": query,
                 "category": None,
                 "is_ordering": is_ordering,
+                "cart_items": cart_items,
             },
         )
     else:
@@ -37,7 +50,11 @@ def category_list(request):
         return render(
             request,
             "catalog/category_list.html",
-            {"categories": categories, "is_ordering": is_ordering},
+            {
+                "categories": categories,
+                "is_ordering": is_ordering,
+                "cart_items": cart_items,  # Pass cart to the template
+            },
         )
 
 
@@ -76,7 +93,6 @@ def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
     items = category.items.all().order_by(Lower("name"))
 
-    # --- DYNAMIC LOGO PATH ---
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
     context = {
@@ -321,11 +337,9 @@ def order_detail(request, order_id):
 
 @login_required
 def order_pdf(request, order_id):
-    """Generates a formal receipt PDF for a specific order."""
     order = get_object_or_404(Order, id=order_id)
     order_items = order.items.all()
 
-    # --- DYNAMIC LOGO PATH ---
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
     context = {
@@ -340,19 +354,44 @@ def order_pdf(request, order_id):
     if pdf:
         response = HttpResponse(pdf, content_type="application/pdf")
 
-        # --- NEW: Calculate the specific order number for this client ---
-        # This counts how many orders this client had up to (and including) this current order
         client_order_number = Order.objects.filter(
             client=order.client, id__lte=order.id
         ).count()
 
-        # Create the new filename (e.g., "Ghady Yehya_#1.pdf")
         filename = f"{order.client.name}_#{client_order_number}.pdf"
 
-        # Note: We added quotes around "{filename}" to ensure browsers
-        # don't cut the name off if the client's name has spaces!
         content = f'attachment; filename="{filename}"'
         response["Content-Disposition"] = content
         return response
 
     return HttpResponse("Error generating PDF")
+
+
+# ==========================================
+# PHASE 2.5: LIVE SEARCH API
+# ==========================================
+def live_search(request):
+    """Returns JSON search results as the user types."""
+    query = request.GET.get("q", "")
+    results = []
+
+    if query.strip():
+        items = Item.objects.filter(
+            Q(name__icontains=query) | Q(description__icontains=query)
+        ).order_by(Lower("name"))[
+            :15
+        ]  # Limit to 15 to keep it fast
+
+        for item in items:
+            if item.category:
+                results.append(
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "category_id": item.category.id,
+                        "category_name": item.category.name,
+                        "price": str(item.price),
+                    }
+                )
+
+    return JsonResponse({"results": results})

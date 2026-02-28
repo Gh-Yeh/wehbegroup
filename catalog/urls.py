@@ -20,6 +20,8 @@ urlpatterns = [
         name="update_cart_item",
     ),
     path("checkout/", views.checkout, name="checkout"),
+    # --- PHASE 2.5: LIVE SEARCH ---
+    path("live-search/", views.live_search, name="live_search"),
     # --- PHASE 2: CLIENT DASHBOARD ---
     path("clients/", views.client_list, name="client_list"),
     path("clients/<int:client_id>/", views.client_detail, name="client_detail"),

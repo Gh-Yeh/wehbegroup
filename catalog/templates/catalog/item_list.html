@@ -4,10 +4,20 @@
     <title>
       {% if category %}{{ category.name }}{% else %}Search Results{% endif %} - WehbeGroup
     </title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+      /* This makes the jump smooth when you click a search result! */
+      html { scroll-behavior: smooth; }
+      
+      /* If the browser jumps to an item, it highlights it briefly so you spot it! */
+      :target {
+        animation: highlight 2s ease-out;
+      }
+      @keyframes highlight {
+        0% { box-shadow: 0 0 20px rgba(0, 123, 255, 0.8); transform: scale(1.02); }
+        100% { box-shadow: none; transform: scale(1); }
+      }
+    </style>
   </head>
   <body class="{% if is_ordering %}bg-warning bg-opacity-10{% else %}bg-light{% endif %}">
     <div class="container-fluid mt-5 px-4">
@@ -39,7 +49,7 @@
                     {% for c_item in cart_items %}
                         <div class="border-bottom mb-3 pb-3">
                             <h6 class="mb-1">{{ c_item.item.name }}</h6>
-                            <small class="text-muted d-block mb-2">{{ c_item.item.description|truncatechars:40 }}</small>
+                            <div class="text-muted small mb-2">{{ c_item.item.description|truncatechars:40 }}</div>
                             
                             <form method="post" action="{% url 'update_cart_item' c_item.item.id %}" class="d-flex align-items-center">
                                 {% csrf_token %}
@@ -63,7 +73,8 @@
         
           <div class="row">
             {% for item in items %}
-            <div class="col-md-{% if is_ordering %}4{% else %}3{% endif %} mb-4">
+            
+            <div class="col-md-{% if is_ordering %}4{% else %}3{% endif %} mb-4" id="item-{{ item.id }}">
               
               <div class="card shadow-sm h-100 {% if item.id in cart_item_ids %}border-success bg-success bg-opacity-10{% endif %}">
                 {% if item.image %}
