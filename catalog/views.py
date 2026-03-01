@@ -17,15 +17,23 @@ def category_list(request):
     is_ordering = request.session.get("is_ordering", False)
     query = request.GET.get("q")
 
-    # --- PHASE 2: Fetch Cart Data for the Sidebar on the Home Page ---
     cart = request.session.get("ticket_cart", {})
     cart_items = []
+    cart_total = Decimal(0)  # <--- NEW: Track the total
 
     if is_ordering:
         for item_id_str, qty in cart.items():
             try:
                 cart_item = Item.objects.get(id=int(item_id_str))
-                cart_items.append({"item": cart_item, "quantity": qty})
+                item_total = cart_item.price * qty
+                cart_items.append(
+                    {
+                        "item": cart_item,
+                        "quantity": qty,
+                        "total_price": item_total,  # <--- NEW: Track line price
+                    }
+                )
+                cart_total += item_total
             except Item.DoesNotExist:
                 pass
 
@@ -43,6 +51,7 @@ def category_list(request):
                 "category": None,
                 "is_ordering": is_ordering,
                 "cart_items": cart_items,
+                "cart_total": cart_total,  # <--- Passed to template
             },
         )
     else:
@@ -53,7 +62,8 @@ def category_list(request):
             {
                 "categories": categories,
                 "is_ordering": is_ordering,
-                "cart_items": cart_items,  # Pass cart to the template
+                "cart_items": cart_items,
+                "cart_total": cart_total,  # <--- Passed to template
             },
         )
 
@@ -66,13 +76,22 @@ def item_list(request, category_id):
     cart = request.session.get("ticket_cart", {})
     cart_items = []
     cart_item_ids = []
+    cart_total = Decimal(0)  # <--- NEW: Track the total
 
     if is_ordering:
         for item_id_str, qty in cart.items():
             try:
                 cart_item = Item.objects.get(id=int(item_id_str))
-                cart_items.append({"item": cart_item, "quantity": qty})
+                item_total = cart_item.price * qty
+                cart_items.append(
+                    {
+                        "item": cart_item,
+                        "quantity": qty,
+                        "total_price": item_total,  # <--- NEW: Track line price
+                    }
+                )
                 cart_item_ids.append(cart_item.id)
+                cart_total += item_total
             except Item.DoesNotExist:
                 pass
 
@@ -85,6 +104,7 @@ def item_list(request, category_id):
             "is_ordering": is_ordering,
             "cart_items": cart_items,
             "cart_item_ids": cart_item_ids,
+            "cart_total": cart_total,  # <--- Passed to template
         },
     )
 
@@ -318,7 +338,21 @@ def client_list(request):
 @login_required
 def client_detail(request, client_id):
     client = get_object_or_404(Client, id=client_id)
-    orders = client.orders.all().order_by("-created_at")
+
+    # --- NEW: Calculate True Client Order Numbers ---
+    # First, get all orders ascending so we can count them properly
+    orders_qs = client.orders.all().order_by("created_at")
+    orders = []
+
+    for i, order in enumerate(orders_qs, 1):
+        order.client_order_number = (
+            i  # Attach the custom number to the object temporarily
+        )
+        orders.append(order)
+
+    # Reverse it so newest is on top!
+    orders.reverse()
+
     return render(
         request, "catalog/client_detail.html", {"client": client, "orders": orders}
     )
@@ -328,10 +362,20 @@ def client_detail(request, client_id):
 def order_detail(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     order_items = order.items.all()
+
+    # Calculate their specific order number for the display
+    client_order_number = Order.objects.filter(
+        client=order.client, id__lte=order.id
+    ).count()
+
     return render(
         request,
         "catalog/order_detail.html",
-        {"order": order, "order_items": order_items},
+        {
+            "order": order,
+            "order_items": order_items,
+            "client_order_number": client_order_number,  # Pass to template
+        },
     )
 
 
@@ -342,24 +386,24 @@ def order_pdf(request, order_id):
 
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
+    # Calculate their specific order number for the PDF text
+    client_order_number = Order.objects.filter(
+        client=order.client, id__lte=order.id
+    ).count()
+
     context = {
         "order": order,
         "order_items": order_items,
         "pagesize": "A4",
         "logo_path": logo_path,
+        "client_order_number": client_order_number,  # Pass to template
     }
 
     pdf = render_to_pdf("catalog/receipt_pdf_template.html", context)
 
     if pdf:
         response = HttpResponse(pdf, content_type="application/pdf")
-
-        client_order_number = Order.objects.filter(
-            client=order.client, id__lte=order.id
-        ).count()
-
         filename = f"{order.client.name}_#{client_order_number}.pdf"
-
         content = f'attachment; filename="{filename}"'
         response["Content-Disposition"] = content
         return response
@@ -378,9 +422,7 @@ def live_search(request):
     if query.strip():
         items = Item.objects.filter(
             Q(name__icontains=query) | Q(description__icontains=query)
-        ).order_by(Lower("name"))[
-            :15
-        ]  # Limit to 15 to keep it fast
+        ).order_by(Lower("name"))[:15]
 
         for item in items:
             if item.category:

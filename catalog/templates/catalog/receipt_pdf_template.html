@@ -60,7 +60,6 @@
         width: 100%;
         margin-bottom: 30px;
       }
-
       .bill-to {
         width: 50%;
       }
@@ -155,7 +154,7 @@
       id="headerContent"
       style="text-align: right; color: #888; font-size: 10px"
     >
-      Order #{{ order.id }} - {{ order.client.name }}
+      Order #{{ client_order_number }} - {{ order.client.name }}
     </div>
 
     <table class="header-table">
@@ -168,7 +167,7 @@
         </td>
         <td class="header-info">
           <div class="invoice-title">RECEIPT</div>
-          <div><strong>Order #:</strong> {{ order.id }}</div>
+          <div><strong>Order #:</strong> {{ client_order_number }}</div>
           <div><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</div>
         </td>
       </tr>
@@ -215,16 +214,13 @@
         <tr>
           <td class="col-item">
             <div class="item-name">
-              {% if order_item.item %}
-              <span>{{ order_item.item.name }}</span>
-              {% else %}
-              <span>Deleted Item</span>
-              {% endif %}
+              {% if order_item.item %}<span>{{ order_item.item.name }}</span>{%
+              else %}<span>Deleted Item</span>{% endif %}
             </div>
             <div class="item-desc">
-              {% if order_item.item %}
-              <span>{{ order_item.item.description }}</span>
-              {% endif %}
+              {% if order_item.item %}<span
+                >{{ order_item.item.description }}</span
+              >{% endif %}
             </div>
           </td>
           <td class="col-price">${{ order_item.price_at_order }}</td>
