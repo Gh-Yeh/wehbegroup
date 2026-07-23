@@ -19,8 +19,11 @@ class Item(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     image = models.ImageField(upload_to="products/", blank=True, null=True)
 
+    # --- PHASE 3: INVENTORY ENGINE FIELDS ---
+    barcode = models.CharField(max_length=100, blank=True, null=True, unique=True)
+    stock_quantity = models.IntegerField(default=0)
+
     class Meta:
-        # --- THE CHANGE IS HERE ---
         # Now we include 'description' in the uniqueness check.
         # This allows same Name + Category, as long as Description is different.
         unique_together = ("category", "name", "description")

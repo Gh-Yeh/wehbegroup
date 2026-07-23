@@ -23,7 +23,7 @@
           {% if user.is_authenticated %} 
             
             {% if is_ordering %}
-            <a href="{% url 'checkout' %}" class="btn btn-success px-5 py-2 fw-bold me-5 fs-5 shadow-sm">💾 Save Ticket</a>
+            <a href="{% url 'checkout' %}" class="btn btn-success px-4 py-2 fw-bold me-5 fs-5 shadow-sm">💾 Save Ticket</a>
             <a href="{% url 'toggle_order_mode' %}" class="btn btn-danger px-4 py-2 fw-bold fs-5 shadow-sm">✖ Close Ticket</a>
             {% else %}
             <a href="{% url 'toggle_order_mode' %}" class="btn btn-primary px-4 py-2 fw-bold fs-5 shadow-sm">🛒 Open New Ticket</a>
