@@ -1,4 +1,5 @@
 import os
+import openpyxl
 from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
@@ -7,6 +8,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.db import IntegrityError
 
 from .models import Category, Item, Client, Order, OrderItem
 from .forms import ItemForm
@@ -38,8 +41,10 @@ def category_list(request):
                 pass
 
     if query:
+        # --- PHASE 3: THE STAGING LOCK (Search) ---
         items = Item.objects.filter(
-            Q(name__icontains=query) | Q(description__icontains=query)
+            (Q(name__icontains=query) | Q(description__icontains=query))
+            & Q(is_active=True)
         ).order_by(Lower("name"))
 
         return render(
@@ -71,7 +76,9 @@ def category_list(request):
 def item_list(request, category_id):
     is_ordering = request.session.get("is_ordering", False)
     category = get_object_or_404(Category, id=category_id)
-    items = category.items.all().order_by(Lower("name"))
+
+    # --- PHASE 3: THE STAGING LOCK (Category View) ---
+    items = category.items.filter(is_active=True).order_by(Lower("name"))
 
     cart = request.session.get("ticket_cart", {})
     cart_items = []
@@ -111,7 +118,9 @@ def item_list(request, category_id):
 
 def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
-    items = category.items.all().order_by(Lower("name"))
+
+    # --- PHASE 3: THE STAGING LOCK (PDF Generator) ---
+    items = category.items.filter(is_active=True).order_by(Lower("name"))
 
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
@@ -191,6 +200,149 @@ def duplicate_category(request, category_id):
     return render(
         request, "catalog/duplicate_category.html", {"category": original_category}
     )
+
+
+# ==========================================
+# PHASE 3: THE SYNC PORTAL ENGINE
+# ==========================================
+@login_required
+def sync_inventory(request):
+    # Security: Only Admins/Staff can access this page
+    if not request.user.is_staff:
+        return redirect("category_list")
+
+    if request.method == "POST":
+        excel_file = request.FILES.get("excel_file")
+
+        # Validation: Ensure a file was uploaded and is Excel
+        if not excel_file:
+            messages.error(request, "Please select a file to upload.")
+            return redirect("sync_inventory")
+        if not excel_file.name.endswith(".xlsx"):
+            messages.error(request, "Invalid format. Please upload an .xlsx file.")
+            return redirect("sync_inventory")
+
+        # --- PHASE 3: ERROR TRACKING MILESTONES ---
+        current_row_number = 1
+        current_processing_barcode = "N/A"
+
+        try:
+            # 1. Prepare the Staging Area
+            uncategorized_folder, created = Category.objects.get_or_create(
+                name="Uncategorized"
+            )
+
+            # 2. Read the Excel File
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+            sheet = wb.active
+
+            # Extract rows
+            rows = list(sheet.iter_rows(values_only=True))
+            if len(rows) < 2:
+                messages.error(request, "The uploaded file is empty or missing data.")
+                return redirect("sync_inventory")
+
+            # 3. Dynamically find column indexes based on headers
+            headers = [str(col).upper().strip() if col else "" for col in rows[0]]
+
+            try:
+                code_idx = headers.index("CODE")
+                item_idx = headers.index("ITEM")
+                qtnet_idx = headers.index("QTNET")
+                salepr_idx = headers.index("SALEPR")
+            except ValueError:
+                messages.error(
+                    request,
+                    "Missing required columns. Ensure CODE, ITEM, QTNET, and SALEPR exist.",
+                )
+                return redirect("sync_inventory")
+
+            matched_count = 0
+            unmatched_count = 0
+
+            # 4. Iterate through data (skipping the header row)
+            # We use enumerate starting at 2 because row 1 is the header
+            for idx, row in enumerate(rows[1:], start=2):
+                current_row_number = idx
+
+                # Safely extract and strip invisible spaces from FoxPro data
+                raw_code = (
+                    str(row[code_idx]).strip() if row[code_idx] is not None else ""
+                )
+                current_processing_barcode = raw_code if raw_code else "No Barcode"
+
+                raw_name = (
+                    str(row[item_idx]).strip()
+                    if row[item_idx] is not None
+                    else "Unknown Item"
+                )
+                raw_qtnet = row[qtnet_idx]
+                raw_salepr = row[salepr_idx]
+
+                if not raw_code:
+                    continue  # Skip rows with no barcode
+
+                # Safely convert stock and price
+                try:
+                    stock = int(float(raw_qtnet)) if raw_qtnet is not None else 0
+                except ValueError:
+                    stock = 0
+
+                try:
+                    price = (
+                        Decimal(str(raw_salepr))
+                        if raw_salepr is not None
+                        else Decimal("0.00")
+                    )
+                except:
+                    price = Decimal("0.00")
+
+                # 5. Apply Core Logic
+                item = Item.objects.filter(barcode=raw_code).first()
+
+                if item:
+                    # Match Found: Update Numbers Only
+                    item.stock_quantity = stock
+                    item.price = price
+                    item.save(update_fields=["stock_quantity", "price"])
+                    matched_count += 1
+                else:
+                    # Unmatched: Send to Staging Area
+                    try:
+                        Item.objects.create(
+                            name=raw_name,
+                            category=uncategorized_folder,
+                            barcode=raw_code,
+                            stock_quantity=stock,
+                            price=price,
+                            is_active=False,  # Apply the lock
+                        )
+                        unmatched_count += 1
+                    except IntegrityError:
+                        # Fallback just in case two items have the exact same FoxPro name
+                        Item.objects.create(
+                            name=f"{raw_name} ({raw_code})",
+                            category=uncategorized_folder,
+                            barcode=raw_code,
+                            stock_quantity=stock,
+                            price=price,
+                            is_active=False,
+                        )
+                        unmatched_count += 1
+
+            messages.success(
+                request,
+                f"🚀 Sync Complete! Updated {matched_count} linked items. Sent {unmatched_count} new items to 'Uncategorized'.",
+            )
+
+        except Exception as e:
+            # THIS IS THE PINPOINT ERROR CATCHER
+            error_message = f"Crash detected at Row {current_row_number} (Barcode: {current_processing_barcode}). System Error: {str(e)}"
+            messages.error(request, error_message)
+
+        return redirect("sync_inventory")
+
+    return render(request, "catalog/upload_inventory.html")
 
 
 # ==========================================
@@ -420,8 +572,10 @@ def live_search(request):
     results = []
 
     if query.strip():
+        # --- PHASE 3: THE STAGING LOCK (Live API) ---
         items = Item.objects.filter(
-            Q(name__icontains=query) | Q(description__icontains=query)
+            (Q(name__icontains=query) | Q(description__icontains=query))
+            & Q(is_active=True)
         ).order_by(Lower("name"))[:15]
 
         for item in items:

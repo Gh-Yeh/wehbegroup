@@ -11,6 +11,8 @@ urlpatterns = [
         views.duplicate_category,
         name="duplicate_category",
     ),
+    # --- PHASE 3: SYNC PORTAL ---
+    path("sync-inventory/", views.sync_inventory, name="sync_inventory"),
     # --- PHASE 2: POS & ORDER MANAGEMENT ---
     path("toggle-order/", views.toggle_order_mode, name="toggle_order_mode"),
     path("add-to-ticket/<int:item_id>/", views.add_to_ticket, name="add_to_ticket"),

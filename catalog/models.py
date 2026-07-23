@@ -1,3 +1,4 @@
+import os  # <--- NEW: Added this at the top!
 from django.db import models
 from PIL import Image
 
@@ -23,9 +24,10 @@ class Item(models.Model):
     barcode = models.CharField(max_length=100, blank=True, null=True, unique=True)
     stock_quantity = models.IntegerField(default=0)
 
+    # --- PHASE 3: THE STAGING LOCK ---
+    is_active = models.BooleanField(default=True)
+
     class Meta:
-        # Now we include 'description' in the uniqueness check.
-        # This allows same Name + Category, as long as Description is different.
         unique_together = ("category", "name", "description")
 
     def __str__(self):
@@ -35,18 +37,20 @@ class Item(models.Model):
         # 1. Save the file normally first
         super().save(*args, **kwargs)
 
-        # 2. Resize logic
+        # 2. Resize logic (WITH NEW GUARDRAIL)
         if self.image:
-            # Open the image path
             img_path = self.image.path
-            img = Image.open(img_path)
 
-            # Check if it needs resizing
-            if img.height > 800 or img.width > 800:
-                output_size = (800, 800)
-                img.thumbnail(output_size)
-                # Save it back to the same path, compressed
-                img.save(img_path, quality=70)
+            # --- NEW: Check if the file physically exists before opening ---
+            if os.path.exists(img_path):
+                img = Image.open(img_path)
+
+                # Check if it needs resizing
+                if img.height > 800 or img.width > 800:
+                    output_size = (800, 800)
+                    img.thumbnail(output_size)
+                    # Save it back to the same path, compressed
+                    img.save(img_path, quality=70)
 
 
 # ==========================================
@@ -62,7 +66,6 @@ class Client(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        # Prevents adding the exact same person + shop twice
         unique_together = ("name", "shop_name")
 
     def __str__(self):
@@ -83,11 +86,8 @@ class Order(models.Model):
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
-    # SET_NULL future-proofs your accounting if an item is ever deleted
     item = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField(default=1)
-
-    # We lock this in at the moment of purchase!
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):

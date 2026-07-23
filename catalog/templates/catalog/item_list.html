@@ -36,6 +36,11 @@
           {% endif %}
 
           <a href="/admin" class="btn btn-outline-dark px-3 py-2 fw-bold"> Admin Login </a>
+          
+          <!-- PHASE 3: Sync Portal Button -->
+          {% if user.is_staff %}
+          <a href="{% url 'sync_inventory' %}" class="btn btn-dark px-3 py-2 fw-bold shadow-sm">⚙️ Sync Portal</a>
+          {% endif %}
         </div>
       </div>
     </nav>
