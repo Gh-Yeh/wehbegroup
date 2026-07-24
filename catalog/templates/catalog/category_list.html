@@ -112,6 +112,9 @@
           
           <div class="row">
             {% for category in categories %}
+            
+            <!-- PHASE 3: Hide Uncategorized from Guests -->
+            {% if user.is_authenticated or category.name != "Uncategorized" %}
             <div class="col-md-{% if is_ordering %}4{% else %}3{% endif %} mb-4">
               <div class="card shadow-sm h-100 text-center p-4 border-0">
                 <div class="card-body">
@@ -131,6 +134,8 @@
                 </div>
               </div>
             </div>
+            {% endif %}
+            
             {% empty %}
             <div class="col-12 text-center mt-5">
               <p class="lead text-muted">No categories found.</p>

@@ -77,8 +77,13 @@ def item_list(request, category_id):
     is_ordering = request.session.get("is_ordering", False)
     category = get_object_or_404(Category, id=category_id)
 
-    # --- PHASE 3: THE STAGING LOCK (Category View) ---
-    items = category.items.filter(is_active=True).order_by(Lower("name"))
+    # --- PHASE 3: THE STAGING LOCK & ADMIN BYPASS ---
+    if request.user.is_authenticated and category.name == "Uncategorized":
+        # Bypass the lock so admins can see hidden staged items
+        items = category.items.all().order_by(Lower("name"))
+    else:
+        # Standard lock for cashiers and normal categories
+        items = category.items.filter(is_active=True).order_by(Lower("name"))
 
     cart = request.session.get("ticket_cart", {})
     cart_items = []
@@ -151,16 +156,95 @@ def edit_item(request, item_id):
 
     if request.method == "POST":
         form = ItemForm(request.POST, request.FILES, instance=item)
+
         if form.is_valid():
-            form.save()
-            if item.category:
-                return redirect("item_list", category_id=item.category.id)
+            updated_item = form.save(commit=False)
+
+            # --- PHASE 3: ON-THE-FLY CATEGORY CREATOR ---
+            new_cat_name = request.POST.get("new_category_name", "").strip()
+            if new_cat_name:
+                # Get or Create ensures we don't accidentally make duplicates
+                new_category, created = Category.objects.get_or_create(
+                    name=new_cat_name
+                )
+                updated_item.category = new_category
+
+            # --- PHASE 3: THE MAGIC UNLOCK ---
+            if updated_item.category and updated_item.category.name != "Uncategorized":
+                updated_item.is_active = True
+
+            # --- PHASE 3: MERGE & PURGE LOGIC ---
+            merge_item_id = request.POST.get("merge_item_id")
+            if merge_item_id:
+                try:
+                    junk_item = Item.objects.get(id=merge_item_id)
+                    # 1. Override the data
+                    updated_item.barcode = junk_item.barcode
+                    updated_item.stock_quantity = junk_item.stock_quantity
+                    updated_item.price = junk_item.price
+                    # 2. Purge the ghost item
+                    junk_item.delete()
+                except Item.DoesNotExist:
+                    pass
+
+            updated_item.save()
+
+            if updated_item.category:
+                return redirect("item_list", category_id=updated_item.category.id)
             else:
                 return redirect("category_list")
     else:
         form = ItemForm(instance=item)
 
-    return render(request, "catalog/edit_item.html", {"form": form, "item": item})
+    # --- PHASE 3: MATCH FINDER LOGIC (Strict AND + Loose OR) ---
+    suggestions = []
+
+    # Only search if this item is missing a barcode
+    if not item.barcode:
+        # Split the item name into words, ignoring single characters like "*" or "-"
+        words = [word for word in item.name.split() if len(word) > 1]
+
+        if words:
+            # 1. Strict AND Query (Top Priority - Uses up to the first 2 words)
+            strict_query = Q()
+            for word in words[:2]:
+                strict_query &= Q(name__icontains=word)
+
+            strict_matches = (
+                Item.objects.filter(category__name="Uncategorized", is_active=False)
+                .filter(strict_query)
+                .exclude(id=item.id)
+                .order_by(Lower("name"))
+            )
+
+            # 2. Loose OR Query (Fallback for "View More")
+            loose_query = Q()
+            for word in words:
+                loose_query |= Q(name__icontains=word)
+
+            loose_matches = (
+                Item.objects.filter(category__name="Uncategorized", is_active=False)
+                .filter(loose_query)
+                .exclude(id=item.id)
+                .order_by(Lower("name"))
+            )
+
+            # 3. Combine them intelligently (Strict first, avoiding duplicates)
+            combined_suggestions = list(strict_matches)
+            strict_ids = {match.id for match in strict_matches}
+
+            for match in loose_matches:
+                if match.id not in strict_ids:
+                    combined_suggestions.append(match)
+
+            # Limit the final combined list to 15 items
+            suggestions = combined_suggestions[:15]
+
+    return render(
+        request,
+        "catalog/edit_item.html",
+        {"form": form, "item": item, "suggestions": suggestions},
+    )
 
 
 @login_required
