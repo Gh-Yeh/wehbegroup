@@ -22,7 +22,7 @@ def category_list(request):
 
     cart = request.session.get("ticket_cart", {})
     cart_items = []
-    cart_total = Decimal(0)  # <--- NEW: Track the total
+    cart_total = Decimal(0)
 
     if is_ordering:
         for item_id_str, qty in cart.items():
@@ -33,7 +33,7 @@ def category_list(request):
                     {
                         "item": cart_item,
                         "quantity": qty,
-                        "total_price": item_total,  # <--- NEW: Track line price
+                        "total_price": item_total,
                     }
                 )
                 cart_total += item_total
@@ -41,7 +41,6 @@ def category_list(request):
                 pass
 
     if query:
-        # --- PHASE 3: THE STAGING LOCK (Search) ---
         items = Item.objects.filter(
             (Q(name__icontains=query) | Q(description__icontains=query))
             & Q(is_active=True)
@@ -56,7 +55,7 @@ def category_list(request):
                 "category": None,
                 "is_ordering": is_ordering,
                 "cart_items": cart_items,
-                "cart_total": cart_total,  # <--- Passed to template
+                "cart_total": cart_total,
             },
         )
     else:
@@ -68,7 +67,7 @@ def category_list(request):
                 "categories": categories,
                 "is_ordering": is_ordering,
                 "cart_items": cart_items,
-                "cart_total": cart_total,  # <--- Passed to template
+                "cart_total": cart_total,
             },
         )
 
@@ -77,18 +76,15 @@ def item_list(request, category_id):
     is_ordering = request.session.get("is_ordering", False)
     category = get_object_or_404(Category, id=category_id)
 
-    # --- PHASE 3: THE STAGING LOCK & ADMIN BYPASS ---
     if request.user.is_authenticated and category.name == "Uncategorized":
-        # Bypass the lock so admins can see hidden staged items
         items = category.items.all().order_by(Lower("name"))
     else:
-        # Standard lock for cashiers and normal categories
         items = category.items.filter(is_active=True).order_by(Lower("name"))
 
     cart = request.session.get("ticket_cart", {})
     cart_items = []
     cart_item_ids = []
-    cart_total = Decimal(0)  # <--- NEW: Track the total
+    cart_total = Decimal(0)
 
     if is_ordering:
         for item_id_str, qty in cart.items():
@@ -99,7 +95,7 @@ def item_list(request, category_id):
                     {
                         "item": cart_item,
                         "quantity": qty,
-                        "total_price": item_total,  # <--- NEW: Track line price
+                        "total_price": item_total,
                     }
                 )
                 cart_item_ids.append(cart_item.id)
@@ -116,17 +112,14 @@ def item_list(request, category_id):
             "is_ordering": is_ordering,
             "cart_items": cart_items,
             "cart_item_ids": cart_item_ids,
-            "cart_total": cart_total,  # <--- Passed to template
+            "cart_total": cart_total,
         },
     )
 
 
 def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
-
-    # --- PHASE 3: THE STAGING LOCK (PDF Generator) ---
     items = category.items.filter(is_active=True).order_by(Lower("name"))
-
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
     context = {
@@ -142,7 +135,6 @@ def item_list_pdf(request, category_id):
         response = HttpResponse(pdf, content_type="application/pdf")
         current_date = datetime.now().strftime("%Y-%m-%d")
         filename = f"{category.name}_{current_date}.pdf"
-
         content = f"attachment; filename={filename}"
         response["Content-Disposition"] = content
         return response
@@ -160,29 +152,23 @@ def edit_item(request, item_id):
         if form.is_valid():
             updated_item = form.save(commit=False)
 
-            # --- PHASE 3: ON-THE-FLY CATEGORY CREATOR ---
             new_cat_name = request.POST.get("new_category_name", "").strip()
             if new_cat_name:
-                # Get or Create ensures we don't accidentally make duplicates
                 new_category, created = Category.objects.get_or_create(
                     name=new_cat_name
                 )
                 updated_item.category = new_category
 
-            # --- PHASE 3: THE MAGIC UNLOCK ---
             if updated_item.category and updated_item.category.name != "Uncategorized":
                 updated_item.is_active = True
 
-            # --- PHASE 3: MERGE & PURGE LOGIC ---
             merge_item_id = request.POST.get("merge_item_id")
             if merge_item_id:
                 try:
                     junk_item = Item.objects.get(id=merge_item_id)
-                    # 1. Override the data
                     updated_item.barcode = junk_item.barcode
                     updated_item.stock_quantity = junk_item.stock_quantity
                     updated_item.price = junk_item.price
-                    # 2. Purge the ghost item
                     junk_item.delete()
                 except Item.DoesNotExist:
                     pass
@@ -196,16 +182,12 @@ def edit_item(request, item_id):
     else:
         form = ItemForm(instance=item)
 
-    # --- PHASE 3: MATCH FINDER LOGIC (Strict AND + Loose OR) ---
     suggestions = []
 
-    # Only search if this item is missing a barcode
     if not item.barcode:
-        # Split the item name into words, ignoring single characters like "*" or "-"
         words = [word for word in item.name.split() if len(word) > 1]
 
         if words:
-            # 1. Strict AND Query (Top Priority - Uses up to the first 2 words)
             strict_query = Q()
             for word in words[:2]:
                 strict_query &= Q(name__icontains=word)
@@ -217,7 +199,6 @@ def edit_item(request, item_id):
                 .order_by(Lower("name"))
             )
 
-            # 2. Loose OR Query (Fallback for "View More")
             loose_query = Q()
             for word in words:
                 loose_query |= Q(name__icontains=word)
@@ -229,7 +210,6 @@ def edit_item(request, item_id):
                 .order_by(Lower("name"))
             )
 
-            # 3. Combine them intelligently (Strict first, avoiding duplicates)
             combined_suggestions = list(strict_matches)
             strict_ids = {match.id for match in strict_matches}
 
@@ -237,7 +217,6 @@ def edit_item(request, item_id):
                 if match.id not in strict_ids:
                     combined_suggestions.append(match)
 
-            # Limit the final combined list to 15 items
             suggestions = combined_suggestions[:15]
 
     return render(
@@ -292,16 +271,17 @@ def duplicate_category(request, category_id):
 # ==========================================
 # PHASE 3: THE SYNC PORTAL ENGINE
 # ==========================================
+# ==========================================
+# PHASE 3: THE SYNC PORTAL ENGINE
+# ==========================================
 @login_required
 def sync_inventory(request):
-    # Security: Only Admins/Staff can access this page
     if not request.user.is_staff:
         return redirect("category_list")
 
     if request.method == "POST":
         excel_file = request.FILES.get("excel_file")
 
-        # Validation: Ensure a file was uploaded and is Excel
         if not excel_file:
             messages.error(request, "Please select a file to upload.")
             return redirect("sync_inventory")
@@ -309,27 +289,22 @@ def sync_inventory(request):
             messages.error(request, "Invalid format. Please upload an .xlsx file.")
             return redirect("sync_inventory")
 
-        # --- PHASE 3: ERROR TRACKING MILESTONES ---
         current_row_number = 1
         current_processing_barcode = "N/A"
 
         try:
-            # 1. Prepare the Staging Area
             uncategorized_folder, created = Category.objects.get_or_create(
                 name="Uncategorized"
             )
 
-            # 2. Read the Excel File
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             sheet = wb.active
 
-            # Extract rows
             rows = list(sheet.iter_rows(values_only=True))
             if len(rows) < 2:
                 messages.error(request, "The uploaded file is empty or missing data.")
                 return redirect("sync_inventory")
 
-            # 3. Dynamically find column indexes based on headers
             headers = [str(col).upper().strip() if col else "" for col in rows[0]]
 
             try:
@@ -344,17 +319,12 @@ def sync_inventory(request):
                 )
                 return redirect("sync_inventory")
 
-            # --- NEW: Advanced Tracking Metrics ---
-            linked_updated = 0
-            unlinked_updated = 0
-            new_created = 0
-            synced_barcodes = []  # Tracks every barcode in the Excel file
+            items_updated = 0
+            synced_barcodes = []
 
-            # 4. Iterate through data (skipping the header row)
             for idx, row in enumerate(rows[1:], start=2):
                 current_row_number = idx
 
-                # Safely extract and strip invisible spaces from FoxPro data
                 raw_code = (
                     str(row[code_idx]).strip() if row[code_idx] is not None else ""
                 )
@@ -369,12 +339,10 @@ def sync_inventory(request):
                 raw_salepr = row[salepr_idx]
 
                 if not raw_code:
-                    continue  # Skip rows with no barcode
+                    continue
 
-                # Add barcode to our tracker to protect it from the ghost purge
                 synced_barcodes.append(raw_code)
 
-                # Safely convert stock and price
                 try:
                     stock = int(float(raw_qtnet)) if raw_qtnet is not None else 0
                 except ValueError:
@@ -389,22 +357,26 @@ def sync_inventory(request):
                 except:
                     price = Decimal("0.00")
 
-                # 5. Apply Core Logic
                 item = Item.objects.filter(barcode=raw_code).first()
 
                 if item:
-                    # Match Found: Update Numbers Only
-                    item.stock_quantity = stock
-                    item.price = price
-                    item.save(update_fields=["stock_quantity", "price"])
+                    # --- NEW LOGIC: Strict Mathematical Check ---
+                    item_changed = False
 
-                    # Track if it was a live shop item or a staging area item
-                    if item.is_active:
-                        linked_updated += 1
-                    else:
-                        unlinked_updated += 1
+                    if item.stock_quantity != stock:
+                        item.stock_quantity = stock
+                        item_changed = True
+
+                    if item.price != price:
+                        item.price = price
+                        item_changed = True
+
+                    if item_changed:
+                        item.save(update_fields=["stock_quantity", "price"])
+                        # Only count it as updated if it is an active, linked item
+                        if item.is_active:
+                            items_updated += 1
                 else:
-                    # Unmatched: Send to Staging Area
                     try:
                         Item.objects.create(
                             name=raw_name,
@@ -412,9 +384,8 @@ def sync_inventory(request):
                             barcode=raw_code,
                             stock_quantity=stock,
                             price=price,
-                            is_active=False,  # Apply the lock
+                            is_active=False,
                         )
-                        new_created += 1
                     except IntegrityError:
                         Item.objects.create(
                             name=f"{raw_name} ({raw_code})",
@@ -424,17 +395,17 @@ def sync_inventory(request):
                             price=price,
                             is_active=False,
                         )
-                        new_created += 1
 
-            # --- PHASE 3.5: GHOST ITEM PURGE ---
-            # Find all items in Uncategorized that were NOT in the Excel file and delete them
-            ghosts = uncategorized_folder.items.exclude(barcode__in=synced_barcodes)
-            ghosts_deleted = ghosts.count()
-            ghosts.delete()
+            # Remove items that are no longer in the Excel file
+            uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
 
+            # Get the exact number of items currently sitting in the staging area
+            uncategorized_count = uncategorized_folder.items.count()
+
+            # --- NEW UX: Simple, clean success message ---
             messages.success(
                 request,
-                f"🚀 Sync Complete! Updated {linked_updated} Live items & {unlinked_updated} Staged items. Created {new_created} new items. Purged {ghosts_deleted} ghost items.",
+                f"🚀 Sync Complete! {items_updated} active items were updated. There are {uncategorized_count} items currently sitting in the 'Uncategorized' folder.",
             )
 
         except Exception as e:
@@ -444,6 +415,65 @@ def sync_inventory(request):
         return redirect("sync_inventory")
 
     return render(request, "catalog/upload_inventory.html")
+
+
+# ==========================================
+# PHASE 2: POS & ORDER MANAGEMENT VIEWS
+# ==========================================
+@login_required
+def toggle_order_mode(request):
+    current_state = request.session.get("is_ordering", False)
+    request.session["is_ordering"] = not current_state
+
+    if current_state == True:
+        request.session["ticket_cart"] = {}
+
+    return redirect("category_list")
+
+
+@login_required
+def add_to_ticket(request, item_id):
+    if request.method == "POST":
+        item = get_object_or_404(Item, id=item_id)
+        quantity = int(request.POST.get("quantity", 1))
+
+        cart = request.session.get("ticket_cart", {})
+        item_id_str = str(item_id)
+
+        if item_id_str in cart:
+            cart[item_id_str] += quantity
+        else:
+            cart[item_id_str] = quantity
+
+        request.session["ticket_cart"] = cart
+
+        if item.category:
+            return redirect("item_list", category_id=item.category.id)
+
+    return redirect("category_list")
+
+
+@login_required
+def update_cart_item(request, item_id):
+    if request.method == "POST":
+        cart = request.session.get("ticket_cart", {})
+        item_id_str = str(item_id)
+        action = request.POST.get("action")
+
+        if action == "remove":
+            if item_id_str in cart:
+                del cart[item_id_str]
+
+        elif action == "update":
+            new_qty = int(request.POST.get("quantity", 1))
+            if new_qty > 0:
+                cart[item_id_str] = new_qty
+            else:
+                if item_id_str in cart:
+                    del cart[item_id_str]
+
+        request.session["ticket_cart"] = cart
+        return redirect(request.META.get("HTTP_REFERER", "category_list"))
 
 
 @login_required
@@ -533,18 +563,13 @@ def client_list(request):
 def client_detail(request, client_id):
     client = get_object_or_404(Client, id=client_id)
 
-    # --- NEW: Calculate True Client Order Numbers ---
-    # First, get all orders ascending so we can count them properly
     orders_qs = client.orders.all().order_by("created_at")
     orders = []
 
     for i, order in enumerate(orders_qs, 1):
-        order.client_order_number = (
-            i  # Attach the custom number to the object temporarily
-        )
+        order.client_order_number = i
         orders.append(order)
 
-    # Reverse it so newest is on top!
     orders.reverse()
 
     return render(
@@ -557,7 +582,6 @@ def order_detail(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     order_items = order.items.all()
 
-    # Calculate their specific order number for the display
     client_order_number = Order.objects.filter(
         client=order.client, id__lte=order.id
     ).count()
@@ -568,7 +592,7 @@ def order_detail(request, order_id):
         {
             "order": order,
             "order_items": order_items,
-            "client_order_number": client_order_number,  # Pass to template
+            "client_order_number": client_order_number,
         },
     )
 
@@ -577,10 +601,8 @@ def order_detail(request, order_id):
 def order_pdf(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     order_items = order.items.all()
-
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
-    # Calculate their specific order number for the PDF text
     client_order_number = Order.objects.filter(
         client=order.client, id__lte=order.id
     ).count()
@@ -590,7 +612,7 @@ def order_pdf(request, order_id):
         "order_items": order_items,
         "pagesize": "A4",
         "logo_path": logo_path,
-        "client_order_number": client_order_number,  # Pass to template
+        "client_order_number": client_order_number,
     }
 
     pdf = render_to_pdf("catalog/receipt_pdf_template.html", context)
@@ -609,12 +631,10 @@ def order_pdf(request, order_id):
 # PHASE 2.5: LIVE SEARCH API
 # ==========================================
 def live_search(request):
-    """Returns JSON search results as the user types."""
     query = request.GET.get("q", "")
     results = []
 
     if query.strip():
-        # --- PHASE 3: THE STAGING LOCK (Live API) ---
         items = Item.objects.filter(
             (Q(name__icontains=query) | Q(description__icontains=query))
             & Q(is_active=True)
