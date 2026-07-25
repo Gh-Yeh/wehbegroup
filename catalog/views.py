@@ -289,6 +289,9 @@ def duplicate_category(request, category_id):
 # ==========================================
 # PHASE 3: THE SYNC PORTAL ENGINE
 # ==========================================
+# ==========================================
+# PHASE 3: THE SYNC PORTAL ENGINE
+# ==========================================
 @login_required
 def sync_inventory(request):
     # Security: Only Admins/Staff can access this page
@@ -316,11 +319,6 @@ def sync_inventory(request):
                 name="Uncategorized"
             )
 
-            # --- PHASE 3 FIX: WIPE OLD STAGING DATA ---
-            # Delete all items currently in the Uncategorized folder
-            # to prevent ghost items and ensure a 100% fresh sync
-            uncategorized_folder.items.all().delete()
-
             # 2. Read the Excel File
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             sheet = wb.active
@@ -346,11 +344,13 @@ def sync_inventory(request):
                 )
                 return redirect("sync_inventory")
 
-            matched_count = 0
-            unmatched_count = 0
+            # --- NEW: Advanced Tracking Metrics ---
+            linked_updated = 0
+            unlinked_updated = 0
+            new_created = 0
+            synced_barcodes = []  # Tracks every barcode in the Excel file
 
             # 4. Iterate through data (skipping the header row)
-            # We use enumerate starting at 2 because row 1 is the header
             for idx, row in enumerate(rows[1:], start=2):
                 current_row_number = idx
 
@@ -370,6 +370,9 @@ def sync_inventory(request):
 
                 if not raw_code:
                     continue  # Skip rows with no barcode
+
+                # Add barcode to our tracker to protect it from the ghost purge
+                synced_barcodes.append(raw_code)
 
                 # Safely convert stock and price
                 try:
@@ -394,7 +397,12 @@ def sync_inventory(request):
                     item.stock_quantity = stock
                     item.price = price
                     item.save(update_fields=["stock_quantity", "price"])
-                    matched_count += 1
+
+                    # Track if it was a live shop item or a staging area item
+                    if item.is_active:
+                        linked_updated += 1
+                    else:
+                        unlinked_updated += 1
                 else:
                     # Unmatched: Send to Staging Area
                     try:
@@ -406,9 +414,8 @@ def sync_inventory(request):
                             price=price,
                             is_active=False,  # Apply the lock
                         )
-                        unmatched_count += 1
+                        new_created += 1
                     except IntegrityError:
-                        # Fallback just in case two items have the exact same FoxPro name
                         Item.objects.create(
                             name=f"{raw_name} ({raw_code})",
                             category=uncategorized_folder,
@@ -417,80 +424,26 @@ def sync_inventory(request):
                             price=price,
                             is_active=False,
                         )
-                        unmatched_count += 1
+                        new_created += 1
+
+            # --- PHASE 3.5: GHOST ITEM PURGE ---
+            # Find all items in Uncategorized that were NOT in the Excel file and delete them
+            ghosts = uncategorized_folder.items.exclude(barcode__in=synced_barcodes)
+            ghosts_deleted = ghosts.count()
+            ghosts.delete()
 
             messages.success(
                 request,
-                f"🚀 Sync Complete! Updated {matched_count} linked items. Sent {unmatched_count} new items to 'Uncategorized'.",
+                f"🚀 Sync Complete! Updated {linked_updated} Live items & {unlinked_updated} Staged items. Created {new_created} new items. Purged {ghosts_deleted} ghost items.",
             )
 
         except Exception as e:
-            # THIS IS THE PINPOINT ERROR CATCHER
             error_message = f"Crash detected at Row {current_row_number} (Barcode: {current_processing_barcode}). System Error: {str(e)}"
             messages.error(request, error_message)
 
         return redirect("sync_inventory")
 
     return render(request, "catalog/upload_inventory.html")
-
-
-# ==========================================
-# PHASE 2: POS & ORDER MANAGEMENT VIEWS
-# ==========================================
-@login_required
-def toggle_order_mode(request):
-    current_state = request.session.get("is_ordering", False)
-    request.session["is_ordering"] = not current_state
-
-    if current_state == True:
-        request.session["ticket_cart"] = {}
-
-    return redirect("category_list")
-
-
-@login_required
-def add_to_ticket(request, item_id):
-    if request.method == "POST":
-        item = get_object_or_404(Item, id=item_id)
-        quantity = int(request.POST.get("quantity", 1))
-
-        cart = request.session.get("ticket_cart", {})
-        item_id_str = str(item_id)
-
-        if item_id_str in cart:
-            cart[item_id_str] += quantity
-        else:
-            cart[item_id_str] = quantity
-
-        request.session["ticket_cart"] = cart
-
-        if item.category:
-            return redirect("item_list", category_id=item.category.id)
-
-    return redirect("category_list")
-
-
-@login_required
-def update_cart_item(request, item_id):
-    if request.method == "POST":
-        cart = request.session.get("ticket_cart", {})
-        item_id_str = str(item_id)
-        action = request.POST.get("action")
-
-        if action == "remove":
-            if item_id_str in cart:
-                del cart[item_id_str]
-
-        elif action == "update":
-            new_qty = int(request.POST.get("quantity", 1))
-            if new_qty > 0:
-                cart[item_id_str] = new_qty
-            else:
-                if item_id_str in cart:
-                    del cart[item_id_str]
-
-        request.session["ticket_cart"] = cart
-        return redirect(request.META.get("HTTP_REFERER", "category_list"))
 
 
 @login_required
