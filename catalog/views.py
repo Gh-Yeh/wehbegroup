@@ -316,6 +316,11 @@ def sync_inventory(request):
                 name="Uncategorized"
             )
 
+            # --- PHASE 3 FIX: WIPE OLD STAGING DATA ---
+            # Delete all items currently in the Uncategorized folder
+            # to prevent ghost items and ensure a 100% fresh sync
+            uncategorized_folder.items.all().delete()
+
             # 2. Read the Excel File
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             sheet = wb.active
