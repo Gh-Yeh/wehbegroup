@@ -268,12 +268,6 @@ def duplicate_category(request, category_id):
 # ==========================================
 # PHASE 3: THE SYNC PORTAL ENGINE
 # ==========================================
-# ==========================================
-# PHASE 3: THE SYNC PORTAL ENGINE
-# ==========================================
-# ==========================================
-# PHASE 3: THE SYNC PORTAL ENGINE
-# ==========================================
 @login_required
 def sync_inventory(request):
     if not request.user.is_staff:
@@ -321,6 +315,7 @@ def sync_inventory(request):
 
             items_updated = 0
             synced_barcodes = []
+            processed_barcodes = set()
 
             for idx, row in enumerate(rows[1:], start=2):
                 current_row_number = idx
@@ -341,6 +336,10 @@ def sync_inventory(request):
                 if not raw_code:
                     continue
 
+                if raw_code in processed_barcodes:
+                    continue
+
+                processed_barcodes.add(raw_code)
                 synced_barcodes.append(raw_code)
 
                 try:
@@ -348,19 +347,16 @@ def sync_inventory(request):
                 except ValueError:
                     stock = 0
 
+                # --- NEW LOGIC: Round the Excel price to 2 decimal places to match database ---
                 try:
-                    price = (
-                        Decimal(str(raw_salepr))
-                        if raw_salepr is not None
-                        else Decimal("0.00")
-                    )
+                    raw_val = str(raw_salepr) if raw_salepr is not None else "0.00"
+                    price = round(Decimal(raw_val), 2)
                 except:
                     price = Decimal("0.00")
 
                 item = Item.objects.filter(barcode=raw_code).first()
 
                 if item:
-                    # --- NEW LOGIC: Strict Mathematical Check ---
                     item_changed = False
 
                     if item.stock_quantity != stock:
@@ -373,7 +369,6 @@ def sync_inventory(request):
 
                     if item_changed:
                         item.save(update_fields=["stock_quantity", "price"])
-                        # Only count it as updated if it is an active, linked item
                         if item.is_active:
                             items_updated += 1
                 else:
@@ -399,10 +394,8 @@ def sync_inventory(request):
             # Remove items that are no longer in the Excel file
             uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
 
-            # Get the exact number of items currently sitting in the staging area
             uncategorized_count = uncategorized_folder.items.count()
 
-            # --- NEW UX: Simple, clean success message ---
             messages.success(
                 request,
                 f"🚀 Sync Complete! {items_updated} active items were updated. There are {uncategorized_count} items currently sitting in the 'Uncategorized' folder.",
