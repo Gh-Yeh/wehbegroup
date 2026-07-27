@@ -183,9 +183,13 @@
 
           {% if order.client.shop_name %}
           <div>{{ order.client.shop_name }}</div>
-          {% endif %} {% if order.client.phone_number %}
+          {% endif %} 
+          
+          {% if order.client.phone_number %}
           <div>{{ order.client.phone_number }}</div>
-          {% endif %} {% if order.client.address %}
+          {% endif %} 
+          
+          {% if order.client.address %}
           <div>{{ order.client.address }}</div>
           {% endif %}
         </td>
@@ -214,13 +218,18 @@
         <tr>
           <td class="col-item">
             <div class="item-name">
-              {% if order_item.item %}<span>{{ order_item.item.name }}</span>{%
-              else %}<span>Deleted Item</span>{% endif %}
+              <!-- Formatter-Proof If Statement -->
+              {% if order_item.item %}
+                <span>{{ order_item.item.name }}</span>
+              {% else %}
+                <span>Deleted Item</span>
+              {% endif %}
             </div>
             <div class="item-desc">
-              {% if order_item.item %}<span
-                >{{ order_item.item.description }}</span
-              >{% endif %}
+              <!-- Formatter-Proof If Statement -->
+              {% if order_item.item %}
+                <span>{{ order_item.item.description }}</span>
+              {% endif %}
             </div>
           </td>
           <td class="col-price">${{ order_item.price_at_order }}</td>
