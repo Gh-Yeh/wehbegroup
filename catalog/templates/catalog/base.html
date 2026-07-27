@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WehbeGroup | POS & Inventory</title>
+
+    <!-- Tailwind CSS Engine -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Flowbite Component Library -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/flowbite@2.4.0/dist/flowbite.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Custom Brand Configuration -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-gray-50 text-gray-800 antialiased flex flex-col min-h-screen">
+    <!-- Universal Top Navigation Bar -->
+    <nav
+      class="bg-white border-b border-gray-200 fixed z-30 w-full top-0 shadow-sm"
+    >
+      <div
+        class="max-w-screen-2xl flex flex-wrap items-center justify-between mx-auto p-4"
+      >
+        <!-- Brand Logo / Name (Acts as the Home/Catalog button) -->
+        <a
+          href="{% url 'category_list' %}"
+          class="flex items-center space-x-3 rtl:space-x-reverse"
+        >
+          <span
+            class="self-center text-2xl font-bold whitespace-nowrap text-brand-600"
+            >WehbeGroup</span
+          >
+        </a>
+
+        <!-- Mobile Menu Button -->
+        <button
+          data-collapse-toggle="navbar-default"
+          type="button"
+          class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200"
+          aria-controls="navbar-default"
+          aria-expanded="false"
+        >
+          <span class="sr-only">Open main menu</span>
+          <svg
+            class="w-5 h-5"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 17 14"
+          >
+            <path
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M1 1h15M1 7h15M1 13h15"
+            />
+          </svg>
+        </button>
+
+        <!-- Desktop Links -->
+        <div class="hidden w-full md:block md:w-auto" id="navbar-default">
+          <ul
+            class="font-medium flex flex-col p-4 md:p-0 mt-4 border border-gray-100 rounded-lg bg-gray-50 md:flex-row md:space-x-8 rtl:space-x-reverse md:mt-0 md:border-0 md:bg-white"
+          >
+            <!-- Only visible to logged-in employees -->
+            {% if user.is_authenticated %}
+            <li>
+              <a
+                href="{% url 'client_list' %}"
+                class="block py-2 px-3 text-gray-900 rounded hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-brand-600 md:p-0"
+                >Clients & Orders</a
+              >
+            </li>
+            {% endif %}
+
+            <!-- Only visible to Staff/Admins -->
+            {% if user.is_staff %}
+            <li>
+              <a
+                href="{% url 'sync_inventory' %}"
+                class="block py-2 px-3 text-gray-900 rounded hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-brand-600 md:p-0"
+                >Sync Portal</a
+              >
+            </li>
+            {% endif %}
+
+            <!-- Only visible to Guests -->
+            {% if not user.is_authenticated %}
+            <li>
+              <a
+                href="/admin"
+                class="block py-2 px-3 text-gray-900 rounded hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-brand-600 md:p-0"
+                >Admin Login</a
+              >
+            </li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Injection Zone -->
+    <main class="flex-grow container mx-auto px-4 pt-24 pb-12">
+      <!-- Universal Alert System -->
+      {% if messages %}
+      <div class="mb-6">
+        {% for message in messages %}
+        <div
+          class="p-4 mb-4 text-sm rounded-lg {% if message.tags == 'error' %}bg-red-50 text-red-800 border-red-200{% else %}bg-green-50 text-green-800 border-green-200{% endif %} border"
+          role="alert"
+        >
+          <span class="font-medium">{{ message }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- This is where individual pages will inject their specific code -->
+      {% block content %} {% endblock %}
+    </main>
+
+    <!-- Flowbite Interactive Logic -->
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.4.0/dist/flowbite.min.js"></script>
+  </body>
+</html>

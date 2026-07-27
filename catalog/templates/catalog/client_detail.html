@@ -1,73 +1,135 @@
-<!doctype html>
-<html>
-  <head>
-    <title>{{ client.name }} - WehbeGroup</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-  </head>
-  <body class="bg-light">
-    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
-      <div class="container d-flex justify-content-between align-items-center">
-        <a class="navbar-brand fw-bold" href="{% url 'client_list' %}">
-          &larr; Back to Clients
-        </a>
-      </div>
-    </nav>
+{% extends 'catalog/base.html' %} {% block content %}
+<!-- Top Action Bar -->
+<div class="mb-6">
+  <a
+    href="{% url 'client_list' %}"
+    class="inline-flex items-center gap-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 shadow-sm transition-colors"
+  >
+    <span>&larr;</span> Back to Client Directory
+  </a>
+</div>
 
-    <div class="container">
-      <div class="card shadow-sm mb-5 border-primary">
-        <div class="card-body p-4 text-center">
-          <h2 class="mb-1">{{ client.name }}</h2>
+<!-- Client Profile Header Card -->
+<div
+  class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-10"
+>
+  <!-- Blue Banner Top -->
+  <div class="bg-brand-600 h-24"></div>
 
-          {% if client.shop_name %}
-          <h5 class="text-primary mb-3">{{ client.shop_name }}</h5>
+  <div class="px-6 md:px-8 pb-8 relative">
+    <!-- Floating Avatar -->
+    <div
+      class="w-24 h-24 bg-white border-4 border-white text-brand-600 rounded-full flex items-center justify-center text-4xl font-black uppercase shadow-md -mt-12 mb-4"
+    >
+      {{ client.name|first }}
+    </div>
+
+    <div
+      class="flex flex-col md:flex-row md:justify-between md:items-start gap-4"
+    >
+      <div>
+        <h2 class="text-3xl font-extrabold text-gray-900 mb-1">
+          {{ client.name }}
+        </h2>
+
+        {% if client.shop_name %}
+        <h3 class="text-lg font-bold text-brand-600 mb-4">
+          🏢 {{ client.shop_name }}
+        </h3>
+        {% else %}
+        <div class="mb-4"></div>
+        {% endif %}
+
+        <div class="flex flex-wrap gap-3 text-sm font-medium text-gray-600">
+          {% if client.phone_number %}
+          <div
+            class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200"
+          >
+            <span>📞</span> {{ client.phone_number }}
+          </div>
+          {% endif %} {% if client.address %}
+          <div
+            class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200"
+          >
+            <span>📍</span> {{ client.address }}
+          </div>
           {% endif %}
-          <p class="text-muted mb-0">
-            {% if client.phone_number %}
-            <span class="me-2">📞 {{ client.phone_number }}</span>
-            {% endif %} {% if client.address %}
-            <span>📍 {{ client.address }}</span>
-            {% endif %}
-          </p>
         </div>
       </div>
 
-      <h3 class="mb-4">Order History</h3>
+      <!-- Optional: Could add a "New Order for Client" button here in the future -->
+    </div>
+  </div>
+</div>
 
-      <div class="list-group shadow-sm mb-5">
-        {% for order in orders %}
-        <a
-          href="{% url 'order_detail' order.id %}"
-          class="list-group-item list-group-item-action p-4 d-flex justify-content-between align-items-center"
+<!-- Order History Section -->
+<h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+  📦 Order History
+</h3>
+
+<div
+  class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+>
+  <ul class="divide-y divide-gray-200">
+    {% for order in orders %}
+    <li>
+      <a
+        href="{% url 'order_detail' order.id %}"
+        class="block hover:bg-gray-50 transition-colors group p-4 md:p-6"
+      >
+        <div
+          class="flex flex-col md:flex-row md:items-center justify-between gap-4"
         >
+          <!-- Left: Order Details -->
           <div>
-            <h5 class="mb-1">Order #{{ order.client_order_number }}</h5>
-
-            <small class="text-muted">
+            <h5
+              class="text-lg font-bold text-gray-900 mb-1 group-hover:text-brand-600 transition-colors"
+            >
+              Order #{{ order.client_order_number }}
+            </h5>
+            <p class="text-sm font-medium text-gray-500 mb-2">
               Placed on: {{ order.created_at|date:"F j, Y, g:i a" }}
-            </small>
+            </p>
 
             {% if order.delivery_date %}
-            <br />
-            <small class="text-danger fw-bold">
-              Delivery Expected: {{ order.delivery_date|date:"F j, Y" }}
-            </small>
+            <span
+              class="inline-flex items-center gap-1 bg-orange-50 text-orange-700 text-xs font-bold px-2.5 py-1 rounded-md border border-orange-200"
+            >
+              🚚 Delivery Expected: {{ order.delivery_date|date:"F j, Y" }}
+            </span>
+            {% else %}
+            <span
+              class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200"
+            >
+              ✔️ Immediate Pickup
+            </span>
             {% endif %}
           </div>
 
-          <div class="text-end">
-            <h4 class="text-success mb-0">${{ order.total_price }}</h4>
-            <small class="text-primary">View Receipt &rarr;</small>
+          <!-- Right: Price & CTA -->
+          <div
+            class="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center w-full md:w-auto mt-2 md:mt-0 pt-4 md:pt-0 border-t md:border-0 border-gray-100"
+          >
+            <h4 class="text-2xl font-black text-green-600 mb-1">
+              ${{ order.total_price }}
+            </h4>
+            <span
+              class="text-sm font-bold text-brand-600 group-hover:text-brand-800 flex items-center gap-1 transition-colors"
+            >
+              View Receipt <span>&rarr;</span>
+            </span>
           </div>
-        </a>
-        {% empty %}
-        <div class="list-group-item p-4 text-center text-muted">
-          This client has no orders yet.
         </div>
-        {% endfor %}
-      </div>
-    </div>
-  </body>
-</html>
+      </a>
+    </li>
+
+    {% empty %}
+    <li class="p-12 text-center text-gray-500 bg-gray-50">
+      <span class="text-5xl block mb-4">📄</span>
+      <p class="text-lg font-medium text-gray-900 mb-1">No orders yet</p>
+      <p class="text-sm">This client has not placed any orders.</p>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

@@ -1,53 +1,110 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Duplicate Category</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <div class="card shadow">
-                    <div class="card-header bg-warning text-dark">
-                        <h3 class="mb-0">Duplicate: {{ category.name }}</h3>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">
-                            This will copy all items from <strong>{{ category.name }}</strong> into a new category.
-                        </p>
+{% extends 'catalog/base.html' %} {% block content %}
+<div class="max-w-xl mx-auto">
+  <!-- Action Header -->
+  <div class="mb-6">
+    <a
+      href="{% url 'category_list' %}"
+      class="inline-flex items-center gap-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 shadow-sm transition-colors"
+    >
+      <span>&larr;</span> Back to Categories
+    </a>
+  </div>
 
-                        <form method="post">
-                            {% csrf_token %}
-                            
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">New Category Name</label>
-                                <input type="text" name="new_name" class="form-control" 
-                                       value="{{ category.name }} - Copy" required>
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">Price Adjustment (%)</label>
-                                <div class="input-group">
-                                    <input type="number" name="percentage" class="form-control" 
-                                           step="0.01" value="0" required>
-                                    <span class="input-group-text">%</span>
-                                </div>
-                                <div class="form-text text-muted">
-                                    Use positive numbers to increase (e.g., <strong>3</strong> for +3%)<br>
-                                    Use negative numbers to decrease (e.g., <strong>-5</strong> for -5%)
-                                </div>
-                            </div>
-
-                            <div class="d-flex justify-content-between mt-4">
-                                <a href="{% url 'category_list' %}" class="btn btn-secondary">Cancel</a>
-                                <button type="submit" class="btn btn-success px-4">Create Duplicate</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <!-- Main Card -->
+  <div
+    class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+  >
+    <!-- Header -->
+    <div
+      class="bg-amber-400 text-amber-950 font-extrabold p-5 text-xl flex items-center gap-2"
+    >
+      <span>📋</span> Duplicate Category
     </div>
-</body>
-</html>
+
+    <!-- Body -->
+    <div class="p-6 md:p-8">
+      <p
+        class="text-sm text-gray-600 mb-8 border-l-4 border-amber-400 pl-4 bg-amber-50/50 py-2"
+      >
+        This action will copy all items from
+        <strong class="text-gray-900">{{ category.name }}</strong> into a brand
+        new category.
+      </p>
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="space-y-6">
+          <!-- New Category Name Field -->
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900"
+              >New Category Name</label
+            >
+            <input
+              type="text"
+              name="new_name"
+              value="{{ category.name }} - Copy"
+              required
+              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block w-full p-3 shadow-sm transition-colors"
+            />
+          </div>
+
+          <!-- Price Adjustment Field -->
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900"
+              >Price Adjustment (%)</label
+            >
+
+            <!-- Tailwind Input Group -->
+            <div class="flex shadow-sm rounded-lg">
+              <input
+                type="number"
+                name="percentage"
+                step="0.01"
+                value="0"
+                required
+                class="rounded-none rounded-s-lg bg-gray-50 border border-gray-300 text-gray-900 focus:ring-brand-500 focus:border-brand-500 block flex-1 min-w-0 w-full text-sm p-3 transition-colors"
+              />
+              <span
+                class="inline-flex items-center px-4 text-sm text-gray-700 bg-gray-200 border border-s-0 border-gray-300 rounded-e-lg font-black"
+              >
+                %
+              </span>
+            </div>
+
+            <!-- Help Text -->
+            <div class="mt-3 text-xs text-gray-500 space-y-1">
+              <p>
+                Use positive numbers to increase (e.g.,
+                <strong class="text-green-600">3</strong> for +3%)
+              </p>
+              <p>
+                Use negative numbers to decrease (e.g.,
+                <strong class="text-red-600">-5</strong> for -5%)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div
+          class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 mt-8 border-t border-gray-100"
+        >
+          <a
+            href="{% url 'category_list' %}"
+            class="w-full sm:w-auto text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-100 font-bold rounded-lg text-sm px-6 py-3 text-center transition-colors"
+          >
+            Cancel
+          </a>
+          <button
+            type="submit"
+            class="w-full sm:w-auto text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-bold rounded-lg text-sm px-8 py-3 text-center shadow-md transition-colors flex items-center justify-center gap-2"
+          >
+            💾 Create Duplicate
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

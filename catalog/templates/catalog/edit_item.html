@@ -1,146 +1,233 @@
-<!doctype html>
-<html>
-  <head>
-    <title>Edit Item</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <style>
-      .cursor-pointer {
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body class="bg-light">
-    <div class="container mt-5 mb-5">
-      <div class="row justify-content-center">
-        <div class="col-md-6">
-          <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-              <h3 class="mb-0">Edit Product</h3>
-            </div>
-            <div class="card-body">
-              <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-
-                <!-- PHASE 3: THE MATCH FINDER UI -->
-                {% if suggestions %}
-                <div
-                  class="alert alert-info shadow-sm mb-4 border-2 border-info"
-                >
-                  <h5 class="alert-heading fw-bold">
-                    🧲 Potential Matches Found!
-                  </h5>
-                  <p class="mb-2 small">
-                    We found items in the Uncategorized folder that might match
-                    this product. Select one to automatically import its
-                    <strong>Barcode</strong>, <strong>Stock</strong>, and
-                    <strong>Price</strong>.
-                  </p>
-
-                  <div class="list-group mb-3 shadow-sm">
-                    <!-- Default Option -->
-                    <label
-                      class="list-group-item list-group-item-action list-group-item-light cursor-pointer"
-                    >
-                      <input
-                        class="form-check-input me-1"
-                        type="radio"
-                        name="merge_item_id"
-                        value=""
-                        checked
-                      />
-                      <em>Do not merge (Save normally)</em>
-                    </label>
-
-                    <!-- Dynamic Suggestions Loop -->
-                    {% for suggestion in suggestions %}
-                    <label
-                      class="list-group-item list-group-item-action cursor-pointer {% if forloop.counter > 5 %}collapse extra-suggestions{% endif %}"
-                    >
-                      <input
-                        class="form-check-input me-1"
-                        type="radio"
-                        name="merge_item_id"
-                        value="{{ suggestion.id }}"
-                      />
-                      <strong class="text-dark">{{ suggestion.name }}</strong>
-                      <div class="mt-1">
-                        <span class="badge bg-secondary"
-                          >Barcode: {{ suggestion.barcode|default:"None"
-                          }}</span
-                        >
-                        <span class="badge bg-success"
-                          >📦 Stock: {{ suggestion.stock_quantity }}</span
-                        >
-                        <span class="badge bg-primary"
-                          >💰 ${{ suggestion.price }}</span
-                        >
-                      </div>
-                    </label>
-                    {% endfor %}
-                  </div>
-
-                  <!-- View More Button (Only shows if > 5 suggestions) -->
-                  {% if suggestions|length > 5 %}
-                  <button
-                    class="btn btn-sm btn-outline-info w-100 fw-bold"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target=".extra-suggestions"
-                    aria-expanded="false"
-                  >
-                    👇 View More Matches
-                  </button>
-                  {% endif %}
-                </div>
-                {% endif %} {% for field in form %}
-                <div class="mb-3">
-                  <label class="form-label fw-bold">{{ field.label }}</label>
-                  {{ field }}
-
-                  <!-- ON-THE-FLY CATEGORY CREATOR -->
-                  {% if field.name == 'category' %}
-                  <div
-                    class="mt-3 p-3 bg-white border border-success border-2 rounded shadow-sm"
-                  >
-                    <label class="form-label fw-bold text-success mb-1"
-                      >✨ Or create a new category:</label
-                    >
-                    <input
-                      type="text"
-                      name="new_category_name"
-                      class="form-control"
-                      placeholder="Type new category name here..."
-                    />
-                    <small class="text-muted"
-                      >If you type a name here, the system will ignore the
-                      dropdown above.</small
-                    >
-                  </div>
-                  {% endif %} {% if field.errors %}
-                  <div class="text-danger small">{{ field.errors }}</div>
-                  {% endif %}
-                </div>
-                {% endfor %}
-
-                <div class="d-flex justify-content-between mt-4">
-                  <a href="javascript:history.back()" class="btn btn-secondary"
-                    >Cancel</a
-                  >
-                  <button type="submit" class="btn btn-success px-4 fw-bold">
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
+{% extends 'catalog/base.html' %} {% block content %}
+<div class="max-w-2xl mx-auto">
+  <div
+    class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+  >
+    <!-- Header -->
+    <div class="bg-brand-600 text-white font-bold p-5 text-xl">
+      Edit Product
     </div>
 
-    <!-- Bootstrap JS is required for the "View More" collapse button to function -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  </body>
-</html>
+    <!-- Form Body -->
+    <div class="p-6 md:p-8">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- PHASE 3: THE MATCH FINDER UI -->
+        {% if suggestions %}
+        <div
+          class="bg-blue-50 border-2 border-blue-200 rounded-xl p-5 mb-8 shadow-sm"
+        >
+          <h5
+            class="text-lg font-bold text-blue-800 mb-2 flex items-center gap-2"
+          >
+            🧲 Potential Matches Found!
+          </h5>
+          <p class="text-sm text-blue-700 mb-4">
+            We found items in the Uncategorized folder that might match this
+            product. Select one to automatically import its
+            <strong>Barcode</strong>, <strong>Stock</strong>, and
+            <strong>Price</strong>.
+          </p>
+
+          <div
+            class="bg-white rounded-lg border border-blue-100 overflow-hidden shadow-sm divide-y divide-blue-50"
+          >
+            <!-- Default Option -->
+            <label
+              class="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+            >
+              <input
+                type="radio"
+                name="merge_item_id"
+                value=""
+                checked
+                class="w-4 h-4 text-brand-600 bg-gray-100 border-gray-300 focus:ring-brand-500"
+              />
+              <em class="text-sm text-gray-600"
+                >Do not merge (Save normally)</em
+              >
+            </label>
+
+            <!-- Dynamic Suggestions -->
+            {% for suggestion in suggestions %}
+            <!-- We isolate the if statement to prevent formatter breakage -->
+            <label
+              class="flex items-center gap-3 p-4 hover:bg-blue-50 cursor-pointer transition-colors {% if forloop.counter > 5 %} hidden extra-suggestion {% endif %}"
+            >
+              <input
+                type="radio"
+                name="merge_item_id"
+                value="{{ suggestion.id }}"
+                class="w-4 h-4 text-brand-600 bg-gray-100 border-gray-300 focus:ring-brand-500"
+              />
+              <div>
+                <strong class="text-gray-900 block mb-1"
+                  >{{ suggestion.name }}</strong
+                >
+                <div class="flex flex-wrap gap-2 text-xs font-medium">
+                  <span
+                    class="bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200"
+                  >
+                    Barcode: {{ suggestion.barcode|default:"None" }}
+                  </span>
+                  <span
+                    class="bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200"
+                  >
+                    📦 Stock: {{ suggestion.stock_quantity }}
+                  </span>
+                  <span
+                    class="bg-brand-100 text-brand-700 px-2 py-1 rounded border border-brand-200"
+                  >
+                    💰 ${{ suggestion.price }}
+                  </span>
+                </div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+
+          <!-- View More Button (Only shows if > 5 suggestions) -->
+          {% if suggestions|length > 5 %}
+          <button
+            type="button"
+            id="toggleSuggestionsBtn"
+            class="mt-4 w-full text-blue-700 bg-white border border-blue-300 hover:bg-blue-100 focus:ring-4 focus:ring-blue-100 font-bold rounded-lg text-sm px-5 py-2.5 transition-colors shadow-sm"
+          >
+            👇 View More Matches
+          </button>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Standard Form Fields -->
+        <div class="space-y-5">
+          {% for field in form %}
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900"
+              >{{ field.label }}</label
+            >
+
+            <!-- Render the Django Form Input -->
+            {{ field }}
+
+            <!-- ON-THE-FLY CATEGORY CREATOR -->
+            {% if field.name == 'category' %}
+            <div
+              class="mt-4 p-4 bg-green-50 border-2 border-green-400 rounded-xl shadow-sm"
+            >
+              <label class="block mb-2 text-sm font-bold text-green-800"
+                >✨ Or create a new category:</label
+              >
+              <input
+                type="text"
+                name="new_category_name"
+                placeholder="Type new category name here..."
+                class="bg-white border border-green-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 placeholder-gray-400 transition-colors"
+              />
+              <p class="mt-2 text-xs font-medium text-green-700">
+                If you type a name here, the system will ignore the dropdown
+                above.
+              </p>
+            </div>
+            {% endif %}
+
+            <!-- Form Errors -->
+            {% if field.errors %}
+            <div class="mt-2 text-sm text-red-600 font-medium">
+              {{ field.errors }}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Action Buttons -->
+        <div
+          class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 mt-8 border-t border-gray-100"
+        >
+          <a
+            href="javascript:history.back()"
+            class="w-full sm:w-auto text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-100 font-bold rounded-lg text-sm px-6 py-3 text-center transition-colors"
+          >
+            Cancel
+          </a>
+          <button
+            type="submit"
+            class="w-full sm:w-auto text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-bold rounded-lg text-sm px-8 py-3 text-center shadow-md transition-colors"
+          >
+            💾 Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Dynamic Tailwind Form Styler & Logic -->
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // 1. Style all text inputs, selects, and textareas generated by Django
+    const inputs = document.querySelectorAll(
+      'input[type="text"], input[type="number"], input[type="file"], select, textarea',
+    );
+    inputs.forEach((el) => {
+      // Skip the new category input as we already styled it manually above
+      if (el.name !== "new_category_name") {
+        el.classList.add(
+          "bg-gray-50",
+          "border",
+          "border-gray-300",
+          "text-gray-900",
+          "text-sm",
+          "rounded-lg",
+          "focus:ring-brand-500",
+          "focus:border-brand-500",
+          "block",
+          "w-full",
+          "p-2.5",
+          "transition-colors",
+        );
+      }
+    });
+
+    // 2. Style checkboxes generated by Django
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach((el) => {
+      el.classList.add(
+        "w-4",
+        "h-4",
+        "text-brand-600",
+        "bg-gray-100",
+        "border-gray-300",
+        "rounded",
+        "focus:ring-brand-500",
+      );
+    });
+
+    // 3. Toggle "View More Matches" logic
+    const toggleBtn = document.getElementById("toggleSuggestionsBtn");
+    if (toggleBtn) {
+      toggleBtn.addEventListener("click", function () {
+        const extraItems = document.querySelectorAll(".extra-suggestion");
+        let isHidden = true;
+
+        extraItems.forEach((item) => {
+          if (item.classList.contains("hidden")) {
+            item.classList.remove("hidden");
+            isHidden = false;
+          } else {
+            item.classList.add("hidden");
+          }
+        });
+
+        if (isHidden) {
+          this.innerHTML = "👇 View More Matches";
+        } else {
+          this.innerHTML = "👆 Hide Extra Matches";
+        }
+      });
+    }
+  });
+</script>
+{% endblock %}
