@@ -29,6 +29,18 @@
   {% endif %}
 </div>
 
+<!-- NEW: Client-Side Category Search Bar -->
+<div class="mb-8 max-w-3xl mx-auto">
+  <div class="relative">
+    <div class="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
+      <svg class="w-5 h-5 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+      </svg>
+    </div>
+    <input type="text" id="categorySearchInput" class="block w-full p-4 ps-12 text-gray-900 border border-gray-300 rounded-xl bg-white focus:ring-brand-500 focus:border-brand-500 shadow-sm text-base transition-colors" placeholder="Quick filter items in this view (e.g. Pepsi)..." autocomplete="off" />
+  </div>
+</div>
+
 <!-- Main Layout Wrapper: Handles Side-by-Side Cart on Tablets/Desktop -->
 <div class="flex flex-col md:flex-row gap-6 items-start">
   <!-- Cart Sidebar (Only visible if ordering) -->
@@ -147,10 +159,10 @@
       class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 {% if not is_ordering %}xl:grid-cols-4{% endif %} gap-4"
     >
       {% for item in items %}
-      <!-- Individual Item Card -->
+      <!-- Individual Item Card (Added 'item-card' class for JS targeting) -->
       <div
         id="item-{{ item.id }}"
-        class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col hover:shadow-md transition-shadow {% if item.id in cart_item_ids %}border-green-400 ring-1 ring-green-400{% else %}border-gray-200{% endif %}"
+        class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col hover:shadow-md transition-shadow item-card {% if item.id in cart_item_ids %}border-green-400 ring-1 ring-green-400{% else %}border-gray-200{% endif %}"
       >
         <!-- Image -->
         <div class="h-48 w-full bg-gray-100 border-b border-gray-200">
@@ -193,11 +205,11 @@
             {% endif %} {% endif %}
           </div>
 
-          <!-- Title & Description -->
-          <h5 class="text-lg font-bold text-gray-900 leading-tight mb-1">
+          <!-- Title & Description (Added 'item-name' and 'item-desc' for JS targeting) -->
+          <h5 class="text-lg font-bold text-gray-900 leading-tight mb-1 item-name">
             {{ item.name|title }}
           </h5>
-          <p class="text-sm text-gray-500 mb-4 flex-grow">
+          <p class="text-sm text-gray-500 mb-4 flex-grow item-desc">
             {{ item.description }}
           </p>
 
@@ -373,4 +385,31 @@
     </div>
   </div>
 </div>
+
+<!-- NEW: Client-Side Live Filter Script -->
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const searchInput = document.getElementById("categorySearchInput");
+    const itemCards = document.querySelectorAll(".item-card");
+
+    if (searchInput) {
+      searchInput.addEventListener("input", function () {
+        const query = this.value.toLowerCase().trim();
+
+        itemCards.forEach((card) => {
+          // Read the name and description from the card
+          const name = card.querySelector(".item-name")?.textContent.toLowerCase() || "";
+          const desc = card.querySelector(".item-desc")?.textContent.toLowerCase() || "";
+
+          // Toggle visibility instantly based on the typed query
+          if (name.includes(query) || desc.includes(query)) {
+            card.style.display = "";
+          } else {
+            card.style.display = "none";
+          }
+        });
+      });
+    }
+  });
+</script>
 {% endblock %}
