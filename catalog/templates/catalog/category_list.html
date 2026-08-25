@@ -1,22 +1,35 @@
 {% extends 'catalog/base.html' %} {% block content %}
-<!-- Page Header & Action Bar -->
-<div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-  <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">
-    {% if is_ordering %}🛒 Select a Category to Order{% else %}📦 Product
-    Categories{% endif %}
+
+<!-- NEW: A to Z Hero Section & Action Bar -->
+<div class="text-center mb-10 mt-4">
+  <h1 class="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-4">
+    {% if is_ordering %}🛒 Select a Category{% else %}A to Z{% endif %}
   </h1>
+  
+  {% if not is_ordering %}
+  <div class="max-w-2xl mx-auto space-y-2 mb-8">
+    <p class="text-lg text-gray-600 font-medium">
+      Your ultimate wholesale destination for sweets, snacks, and everything in between.
+    </p>
+    <p class="text-lg text-gray-600 font-medium" dir="rtl">
+      وجهتك الشاملة لتجارة الجملة للحلويات والوجبات الخفيفة، وكل ما تحتاجه بينهما.
+    </p>
+  </div>
+  {% endif %}
 
   <div class="flex flex-wrap items-center justify-center gap-3">
     {% if user.is_authenticated and not is_ordering %}
     <a
       href="{% url 'toggle_order_mode' %}"
-      class="text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:ring-brand-300 font-medium rounded-lg text-sm px-5 py-2.5 shadow-sm transition-colors"
+      class="text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:ring-brand-300 font-bold rounded-lg text-sm px-6 py-3 shadow-md transition-colors"
       >🛒 Open New Ticket</a
     >
-    {% endif %} {% if user.is_staff %}
+    {% endif %} 
+    
+    {% if user.is_staff %}
     <a
       href="/admin"
-      class="text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 shadow-sm transition-colors"
+      class="text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-bold rounded-lg text-sm px-6 py-3 shadow-sm transition-colors"
       >⚙️ Admin Login</a
     >
     {% endif %}
@@ -64,6 +77,7 @@
 
 <!-- Main Layout Wrapper: Handles Side-by-Side Cart on Tablets/Desktop -->
 <div class="flex flex-col md:flex-row gap-6 items-start">
+  
   <!-- Cart Sidebar (Only visible if ordering) -->
   {% if is_ordering %}
   <aside class="w-full md:w-1/3 order-first md:order-last sticky top-24 z-10">
@@ -176,29 +190,43 @@
 
   <!-- Category Grid -->
   <div class="w-full {% if is_ordering %}md:w-2/3{% endif %}">
-    <!-- Tablet Grid: 2 columns if ordering, 3 columns if not. Mobile is always 1 col. -->
-    <div
-      class="grid grid-cols-1 {% if is_ordering %}md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3{% else %}md:grid-cols-3 lg:grid-cols-4{% endif %} gap-4"
-    >
+    <div class="grid grid-cols-1 {% if is_ordering %}md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3{% else %}md:grid-cols-3 lg:grid-cols-4{% endif %} gap-4">
+      
       {% for category in categories %}
+      
       <!-- PHASE 3: Hide Uncategorized from Guests -->
       {% if user.is_authenticated or category.name != "Uncategorized" %}
-      <div
-        class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow"
-      >
-        <div class="text-center mb-4">
-          <div
-            class="w-12 h-12 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold"
-          >
+      
+      <!-- Dynamic Card: Replaces background if image exists -->
+      <div class="relative rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow-lg transition-all min-h-[280px] overflow-hidden {% if not category.image %}bg-white{% endif %}">
+        
+        <!-- Background Image & Gradient Overlay -->
+        {% if category.image %}
+          <img src="{{ category.image.url }}" class="absolute inset-0 w-full h-full object-cover z-0" alt="{{ category.name }}">
+          <!-- Darkened gradient for better text contrast -->
+          <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/80 to-black/50 z-10"></div>
+        {% endif %}
+
+        <!-- Category Title -->
+        <div class="relative z-20 text-center mb-4 mt-2">
+          {% if not category.image %}
+          <div class="w-12 h-12 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">
             {{ category.name|first|upper }}
           </div>
-          <h3 class="text-lg font-bold text-gray-900">{{ category.name }}</h3>
+          {% endif %}
+          
+          <!-- Added uppercase, tracking-wide, and heavy drop shadow -->
+          <h3 class="font-bold uppercase tracking-wide {% if category.image %}text-white drop-shadow-lg text-2xl mt-8{% else %}text-gray-900 text-lg{% endif %}">
+            {{ category.name }}
+          </h3>
         </div>
 
-        <div class="mt-auto space-y-2">
+        <!-- Action Buttons (Z-index 20 keeps them clickable over the image) -->
+        <div class="relative z-20 mt-auto space-y-2">
+          <!-- View Items button color adapts based on image presence -->
           <a
             href="{% url 'item_list' category.id %}"
-            class="block w-full text-center text-white bg-gray-800 hover:bg-gray-900 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors"
+            class="block w-full text-center text-white focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors shadow-sm {% if category.image %}bg-brand-600 hover:bg-brand-700 shadow-md border border-brand-500{% else %}bg-gray-800 hover:bg-gray-900{% endif %}"
           >
             View Items
           </a>
@@ -206,18 +234,72 @@
           {% if user.is_authenticated %}
           <a
             href="{% url 'duplicate_category' category.id %}"
-            class="block w-full text-center text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-xs px-5 py-2 transition-colors"
+            class="block w-full text-center {% if category.image %}text-white border-white/40 hover:bg-white/20{% else %}text-gray-700 border-gray-300 hover:bg-gray-50{% endif %} border focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-xs px-5 py-2 transition-colors backdrop-blur-sm"
           >
             📋 Duplicate (+%)
           </a>
           {% endif %}
+          
+          <!-- Admin Edit Background Button -->
+          {% if user.is_staff %}
+          <button
+            type="button"
+            data-modal-target="editCatModal{{ category.id }}"
+            data-modal-toggle="editCatModal{{ category.id }}"
+            class="block w-full text-center {% if category.image %}text-white border-white/40 hover:bg-white/20{% else %}text-gray-700 border-gray-300 hover:bg-gray-50{% endif %} border focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-xs px-5 py-2 transition-colors backdrop-blur-sm"
+          >
+            🖼️ Edit Background
+          </button>
+          {% endif %}
         </div>
       </div>
-      {% endif %} {% empty %}
+
+      <!-- Flowbite Image Upload Modal (Admin Only) -->
+      {% if user.is_staff %}
+      <div id="editCatModal{{ category.id }}" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full backdrop-blur-sm bg-gray-900/50">
+          <div class="relative p-4 w-full max-w-md max-h-full">
+              <div class="relative bg-white rounded-xl shadow">
+                  <!-- enctype="multipart/form-data" is strictly required for file uploads -->
+                  <form method="post" action="{% url 'edit_category_image' category.id %}" enctype="multipart/form-data">
+                      {% csrf_token %}
+                      
+                      <!-- Modal Header -->
+                      <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t bg-gray-50">
+                          <h3 class="text-lg font-bold text-gray-900">
+                              Edit Background
+                          </h3>
+                          <button type="button" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center" data-modal-hide="editCatModal{{ category.id }}">
+                              ✖
+                          </button>
+                      </div>
+                      
+                      <!-- Modal Body -->
+                      <div class="p-4 md:p-5 space-y-4">
+                          <label class="block mb-2 text-sm font-bold text-gray-900">Upload Landscape Image for '{{ category.name }}'</label>
+                          <input type="file" name="category_image" accept="image/*" class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2" required>
+                          <p class="text-xs text-gray-500 font-medium mt-1">Image will be automatically compressed to optimize speed.</p>
+                      </div>
+                      
+                      <!-- Modal Footer -->
+                      <div class="flex items-center p-4 md:p-5 border-t border-gray-200 rounded-b">
+                          <button type="submit" class="w-full text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:outline-none focus:ring-brand-300 font-bold rounded-lg text-sm px-5 py-2.5 text-center transition-colors">
+                              💾 Save Image
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      </div>
+      {% endif %}
+      
+      {% endif %} 
+      
+      {% empty %}
       <div class="col-span-full text-center py-12">
         <p class="text-lg text-gray-500">No categories found.</p>
       </div>
       {% endfor %}
+      
     </div>
   </div>
 </div>
@@ -240,7 +322,7 @@
             if (data.results.length > 0) {
               data.results.forEach((item) => {
                 const li = document.createElement("li");
-
+                
                 li.className =
                   "p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-center transition-colors";
 

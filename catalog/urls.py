@@ -11,6 +11,12 @@ urlpatterns = [
         views.duplicate_category,
         name="duplicate_category",
     ),
+    # --- NEW: CATEGORY IMAGE EDITING ---
+    path(
+        "edit-category-image/<int:category_id>/",
+        views.edit_category_image,
+        name="edit_category_image",
+    ),
     # --- PHASE 3: SYNC PORTAL ---
     path("sync-inventory/", views.sync_inventory, name="sync_inventory"),
     # --- PHASE 2: POS & ORDER MANAGEMENT ---

@@ -265,6 +265,32 @@ def duplicate_category(request, category_id):
     )
 
 
+@login_required
+def edit_category_image(request, category_id):
+    # Security Check: Only allow Admins/Staff to edit category images
+    if not request.user.is_staff:
+        messages.error(
+            request, "Access Denied: Only administrators can update category images."
+        )
+        return redirect("category_list")
+
+    category = get_object_or_404(Category, id=category_id)
+
+    if request.method == "POST":
+        new_image = request.FILES.get("category_image")
+
+        if new_image:
+            category.image = new_image
+            category.save()  # This triggers the PIL compression in your models.py
+            messages.success(
+                request, f"Background image updated successfully for '{category.name}'!"
+            )
+        else:
+            messages.error(request, "No image file was selected.")
+
+    return redirect("category_list")
+
+
 # ==========================================
 # PHASE 3: THE SYNC PORTAL ENGINE
 # ==========================================

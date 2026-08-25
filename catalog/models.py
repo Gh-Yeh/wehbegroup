@@ -1,4 +1,4 @@
-import os  # <--- NEW: Added this at the top!
+import os
 from django.db import models
 from PIL import Image
 
@@ -6,8 +6,30 @@ from PIL import Image
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
+    # --- NEW: Category Background Image ---
+    image = models.ImageField(upload_to="categories/", blank=True, null=True)
+
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # 1. Save the file normally first
+        super().save(*args, **kwargs)
+
+        # 2. Resize logic for the background banner
+        if self.image:
+            img_path = self.image.path
+
+            # Check if the file physically exists before opening
+            if os.path.exists(img_path):
+                img = Image.open(img_path)
+
+                # Limit to 800x600 for landscape background banners
+                if img.height > 600 or img.width > 800:
+                    output_size = (800, 600)
+                    img.thumbnail(output_size)
+                    # Save it back to the same path, compressed
+                    img.save(img_path, quality=70)
 
 
 class Item(models.Model):
@@ -41,7 +63,7 @@ class Item(models.Model):
         if self.image:
             img_path = self.image.path
 
-            # --- NEW: Check if the file physically exists before opening ---
+            # Check if the file physically exists before opening
             if os.path.exists(img_path):
                 img = Image.open(img_path)
 
