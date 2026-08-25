@@ -25,7 +25,7 @@ SECRET_KEY = "hdsajhdjs$$##djhsajdhjkh2312189sjad!!snadjasazx!qs"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["wehbegroup.pythonanywhere.com", "www.wehbegroup.pythonanywhere.com"]
 
 
 # Application definition
