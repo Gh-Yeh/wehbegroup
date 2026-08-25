@@ -21,8 +21,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # --- SECURE ADMIN URL ---
+    # Changed from "admin/" to prevent automated brute-force bot attacks
+    path("atoz-secure-portal-99/", admin.site.urls),
     path("", include("catalog.urls")),
 ]
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

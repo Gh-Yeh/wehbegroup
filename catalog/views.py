@@ -117,6 +117,7 @@ def item_list(request, category_id):
     )
 
 
+@login_required
 def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
     items = category.items.filter(is_active=True).order_by(Lower("name"))
