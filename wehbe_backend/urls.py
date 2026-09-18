@@ -14,16 +14,20 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-
+import os
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+# Fetch the hidden admin URL from the .env file.
+# We include a fallback string just in case the variable is missing.
+ADMIN_URL = os.getenv("ADMIN_URL", "fallback-secure-admin-99/")
+
 urlpatterns = [
     # --- SECURE ADMIN URL ---
-    # Changed from "admin/" to prevent automated brute-force bot attacks
-    path("atoz-secure-portal-99/", admin.site.urls),
+    # The actual URL string is now completely hidden from GitHub
+    path(ADMIN_URL, admin.site.urls),
     path("", include("catalog.urls")),
 ]
 
