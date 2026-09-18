@@ -339,6 +339,7 @@
 </div>
 
 <!-- JavaScript for Live Search -->
+<!-- JavaScript for Live Search (XSS Secured) -->
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const searchInput = document.getElementById("liveSearchInput");
@@ -363,17 +364,31 @@
                 li.onclick = () =>
                   (window.location.href = `/${item.category_id}/#item-${item.id}`);
 
+                // 1. Build the HTML structure with empty containers
                 li.innerHTML = `
-                                    <div>
-                                        <strong class="text-brand-600 text-lg font-bold block">${item.name}</strong>
-                                        <span class="text-xs text-gray-500 uppercase tracking-wider font-semibold">📁 ${item.category_name}</span>
-                                    </div>
-                                    <span class="bg-gray-100 text-gray-800 text-sm font-bold px-3 py-1 rounded-lg border border-gray-200 shadow-sm">$${item.price}</span>
-                                `;
+                  <div>
+                    <strong class="text-brand-600 text-lg font-bold block search-name"></strong>
+                    <span class="text-xs text-gray-500 uppercase tracking-wider font-semibold search-cat"></span>
+                  </div>
+                  <span class="bg-gray-100 text-gray-800 text-sm font-bold px-3 py-1 rounded-lg border border-gray-200 shadow-sm search-price"></span>
+                `;
+
+                // 2. Safely inject the data as pure text (Neutralizes XSS)
+                li.querySelector(".search-name").textContent = item.name;
+                li.querySelector(".search-cat").textContent =
+                  `📁 ${item.category_name}`;
+                li.querySelector(".search-price").textContent =
+                  `$${item.price}`;
+
                 searchResults.appendChild(li);
               });
             } else {
-              searchResults.innerHTML = `<li class="p-4 text-gray-500 text-center italic">No items found matching "${query}"</li>`;
+              searchResults.innerHTML = "";
+              const noResultsLi = document.createElement("li");
+              noResultsLi.className = "p-4 text-gray-500 text-center italic";
+              // Using textContent here securely handles the user's typed query
+              noResultsLi.textContent = `No items found matching "${query}"`;
+              searchResults.appendChild(noResultsLi);
             }
             searchResults.style.display = "block";
           });
