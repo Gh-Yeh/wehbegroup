@@ -133,3 +133,14 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# --- PRODUCTION SECURITY SETTINGS ---
+# These settings automatically activate when DEBUG = False
+if not DEBUG:
+    # 1. Ensure cookies (like admin sessions) are only transmitted over secure HTTPS connections
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # 2. Tell Django to trust the secure headers passed by PythonAnywhere's HTTPS load balancer
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
