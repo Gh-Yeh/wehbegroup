@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from .models import Category, Item, Client, Order, OrderItem
 from .forms import ItemForm
@@ -314,121 +314,127 @@ def sync_inventory(request):
         current_processing_barcode = "N/A"
 
         try:
-            uncategorized_folder, created = Category.objects.get_or_create(
-                name="Uncategorized"
-            )
-
-            wb = openpyxl.load_workbook(excel_file, data_only=True)
-            sheet = wb.active
-
-            rows = list(sheet.iter_rows(values_only=True))
-            if len(rows) < 2:
-                messages.error(request, "The uploaded file is empty or missing data.")
-                return redirect("sync_inventory")
-
-            headers = [str(col).upper().strip() if col else "" for col in rows[0]]
-
-            try:
-                code_idx = headers.index("CODE")
-                item_idx = headers.index("ITEM")
-                qtnet_idx = headers.index("QTNET")
-                salepr_idx = headers.index("SALEPR")
-            except ValueError:
-                messages.error(
-                    request,
-                    "Missing required columns. Ensure CODE, ITEM, QTNET, and SALEPR exist.",
+            # --- SECURITY ADDITION: The Atomic Sandbox ---
+            # If ANY code fails inside this 'with' block, Django instantly discards
+            # all changes made to the database during this function, keeping the DB safe.
+            with transaction.atomic():
+                uncategorized_folder, created = Category.objects.get_or_create(
+                    name="Uncategorized"
                 )
-                return redirect("sync_inventory")
 
-            items_updated = 0
-            synced_barcodes = []
-            processed_barcodes = set()
+                wb = openpyxl.load_workbook(excel_file, data_only=True)
+                sheet = wb.active
 
-            for idx, row in enumerate(rows[1:], start=2):
-                current_row_number = idx
+                rows = list(sheet.iter_rows(values_only=True))
+                if len(rows) < 2:
+                    messages.error(request, "The uploaded file is empty or missing data.")
+                    return redirect("sync_inventory")
 
-                raw_code = (
-                    str(row[code_idx]).strip() if row[code_idx] is not None else ""
-                )
-                current_processing_barcode = raw_code if raw_code else "No Barcode"
-
-                raw_name = (
-                    str(row[item_idx]).strip()
-                    if row[item_idx] is not None
-                    else "Unknown Item"
-                )
-                raw_qtnet = row[qtnet_idx]
-                raw_salepr = row[salepr_idx]
-
-                if not raw_code:
-                    continue
-
-                if raw_code in processed_barcodes:
-                    continue
-
-                processed_barcodes.add(raw_code)
-                synced_barcodes.append(raw_code)
+                headers = [str(col).upper().strip() if col else "" for col in rows[0]]
 
                 try:
-                    stock = int(float(raw_qtnet)) if raw_qtnet is not None else 0
+                    code_idx = headers.index("CODE")
+                    item_idx = headers.index("ITEM")
+                    qtnet_idx = headers.index("QTNET")
+                    salepr_idx = headers.index("SALEPR")
                 except ValueError:
-                    stock = 0
+                    messages.error(
+                        request,
+                        "Missing required columns. Ensure CODE, ITEM, QTNET, and SALEPR exist.",
+                    )
+                    return redirect("sync_inventory")
 
-                # --- NEW LOGIC: Round the Excel price to 2 decimal places to match database ---
-                try:
-                    raw_val = str(raw_salepr) if raw_salepr is not None else "0.00"
-                    price = round(Decimal(raw_val), 2)
-                except:
-                    price = Decimal("0.00")
+                items_updated = 0
+                synced_barcodes = []
+                processed_barcodes = set()
 
-                item = Item.objects.filter(barcode=raw_code).first()
+                for idx, row in enumerate(rows[1:], start=2):
+                    current_row_number = idx
 
-                if item:
-                    item_changed = False
+                    raw_code = (
+                        str(row[code_idx]).strip() if row[code_idx] is not None else ""
+                    )
+                    current_processing_barcode = raw_code if raw_code else "No Barcode"
 
-                    if item.stock_quantity != stock:
-                        item.stock_quantity = stock
-                        item_changed = True
+                    raw_name = (
+                        str(row[item_idx]).strip()
+                        if row[item_idx] is not None
+                        else "Unknown Item"
+                    )
+                    raw_qtnet = row[qtnet_idx]
+                    raw_salepr = row[salepr_idx]
 
-                    if item.price != price:
-                        item.price = price
-                        item_changed = True
+                    if not raw_code:
+                        continue
 
-                    if item_changed:
-                        item.save(update_fields=["stock_quantity", "price"])
-                        if item.is_active:
-                            items_updated += 1
-                else:
+                    if raw_code in processed_barcodes:
+                        continue
+
+                    processed_barcodes.add(raw_code)
+                    synced_barcodes.append(raw_code)
+
                     try:
-                        Item.objects.create(
-                            name=raw_name,
-                            category=uncategorized_folder,
-                            barcode=raw_code,
-                            stock_quantity=stock,
-                            price=price,
-                            is_active=False,
-                        )
-                    except IntegrityError:
-                        Item.objects.create(
-                            name=f"{raw_name} ({raw_code})",
-                            category=uncategorized_folder,
-                            barcode=raw_code,
-                            stock_quantity=stock,
-                            price=price,
-                            is_active=False,
-                        )
+                        stock = int(float(raw_qtnet)) if raw_qtnet is not None else 0
+                    except ValueError:
+                        stock = 0
 
-            # Remove items that are no longer in the Excel file
-            uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
+                    # --- NEW LOGIC: Round the Excel price to 2 decimal places to match database ---
+                    try:
+                        raw_val = str(raw_salepr) if raw_salepr is not None else "0.00"
+                        price = round(Decimal(raw_val), 2)
+                    except:
+                        price = Decimal("0.00")
 
-            uncategorized_count = uncategorized_folder.items.count()
+                    item = Item.objects.filter(barcode=raw_code).first()
 
-            messages.success(
-                request,
-                f"🚀 Sync Complete! {items_updated} active items were updated. There are {uncategorized_count} items currently sitting in the 'Uncategorized' folder.",
-            )
+                    if item:
+                        item_changed = False
+
+                        if item.stock_quantity != stock:
+                            item.stock_quantity = stock
+                            item_changed = True
+
+                        if item.price != price:
+                            item.price = price
+                            item_changed = True
+
+                        if item_changed:
+                            item.save(update_fields=["stock_quantity", "price"])
+                            if item.is_active:
+                                items_updated += 1
+                    else:
+                        try:
+                            Item.objects.create(
+                                name=raw_name,
+                                category=uncategorized_folder,
+                                barcode=raw_code,
+                                stock_quantity=stock,
+                                price=price,
+                                is_active=False,
+                            )
+                        except IntegrityError:
+                            Item.objects.create(
+                                name=f"{raw_name} ({raw_code})",
+                                category=uncategorized_folder,
+                                barcode=raw_code,
+                                stock_quantity=stock,
+                                price=price,
+                                is_active=False,
+                            )
+
+                # Remove items that are no longer in the Excel file
+                uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
+
+                uncategorized_count = uncategorized_folder.items.count()
+
+                messages.success(
+                    request,
+                    f"🚀 Sync Complete! {items_updated} active items were updated. There are {uncategorized_count} items currently sitting in the 'Uncategorized' folder.",
+                )
 
         except Exception as e:
+            # Because of the transaction.atomic() above, if the code reaches this point, 
+            # the database has safely undone everything, and we just show the error.
             error_message = f"Crash detected at Row {current_row_number} (Barcode: {current_processing_barcode}). System Error: {str(e)}"
             messages.error(request, error_message)
 
@@ -520,39 +526,43 @@ def checkout(request):
     if request.method == "POST":
         client_id = request.POST.get("client_id")
 
-        if client_id:
-            client = get_object_or_404(Client, id=client_id)
-        else:
-            new_name = request.POST.get("new_client_name")
-            new_shop = request.POST.get("new_client_shop")
-            new_phone = request.POST.get("new_client_phone")
-            new_address = request.POST.get("new_client_address")
+        # --- SECURITY ADDITION: Order Creation Sandbox ---
+        # Ensures that if something fails while saving items to a ticket, 
+        # the system doesn't create an empty "ghost" order in the database.
+        with transaction.atomic():
+            if client_id:
+                client = get_object_or_404(Client, id=client_id)
+            else:
+                new_name = request.POST.get("new_client_name")
+                new_shop = request.POST.get("new_client_shop")
+                new_phone = request.POST.get("new_client_phone")
+                new_address = request.POST.get("new_client_address")
 
-            client, created = Client.objects.get_or_create(
-                name=new_name,
-                shop_name=new_shop,
-                defaults={"phone_number": new_phone, "address": new_address},
+                client, created = Client.objects.get_or_create(
+                    name=new_name,
+                    shop_name=new_shop,
+                    defaults={"phone_number": new_phone, "address": new_address},
+                )
+
+            delivery_date = request.POST.get("delivery_date") or None
+            order = Order.objects.create(
+                client=client,
+                delivery_date=delivery_date,
+                total_price=0,
             )
 
-        delivery_date = request.POST.get("delivery_date") or None
-        order = Order.objects.create(
-            client=client,
-            delivery_date=delivery_date,
-            total_price=0,
-        )
+            actual_total = Decimal(0)
+            for c_item in cart_items:
+                OrderItem.objects.create(
+                    order=order,
+                    item=c_item["item"],
+                    quantity=c_item["quantity"],
+                    price_at_order=c_item["item"].price,
+                )
+                actual_total += c_item["item"].price * c_item["quantity"]
 
-        actual_total = Decimal(0)
-        for c_item in cart_items:
-            OrderItem.objects.create(
-                order=order,
-                item=c_item["item"],
-                quantity=c_item["quantity"],
-                price_at_order=c_item["item"].price,
-            )
-            actual_total += c_item["item"].price * c_item["quantity"]
-
-        order.total_price = actual_total
-        order.save()
+            order.total_price = actual_total
+            order.save()
 
         request.session["ticket_cart"] = {}
         request.session["is_ordering"] = False
