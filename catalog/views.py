@@ -448,11 +448,14 @@ def sync_inventory(request):
 # ==========================================
 @login_required
 def toggle_order_mode(request):
-    current_state = request.session.get("is_ordering", False)
-    request.session["is_ordering"] = not current_state
+    # --- SECURITY ADDITION: POST Enforcement ---
+    # Only execute if this is a secure, intentional button press (POST)
+    if request.method == "POST":
+        current_state = request.session.get("is_ordering", False)
+        request.session["is_ordering"] = not current_state
 
-    if current_state == True:
-        request.session["ticket_cart"] = {}
+        if current_state == True:
+            request.session["ticket_cart"] = {}
 
     return redirect("category_list")
 

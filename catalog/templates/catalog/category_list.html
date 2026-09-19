@@ -21,11 +21,19 @@
 
   <div class="flex flex-wrap items-center justify-center gap-3">
     {% if user.is_authenticated and not is_ordering %}
-    <a
-      href="{% url 'toggle_order_mode' %}"
-      class="text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:ring-brand-300 font-bold rounded-lg text-sm px-6 py-3 shadow-md transition-colors"
-      >🛒 Open New Ticket</a
+    <form
+      method="post"
+      action="{% url 'toggle_order_mode' %}"
+      class="inline m-0"
     >
+      {% csrf_token %}
+      <button
+        type="submit"
+        class="text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:ring-brand-300 font-bold rounded-lg text-sm px-6 py-3 shadow-md transition-colors"
+      >
+        🛒 Open New Ticket
+      </button>
+    </form>
     {% endif %} {% if user.is_staff %}
     <a
       href="/atoz-secure-portal-99/"
@@ -159,12 +167,19 @@
         </div>
 
         <div class="flex gap-2 pt-2 border-t border-gray-200">
-          <a
-            href="{% url 'toggle_order_mode' %}"
-            class="w-1/2 text-center text-red-600 bg-white border border-red-300 hover:bg-red-50 focus:ring-4 focus:ring-red-100 font-bold rounded-lg text-sm px-3 py-2.5 transition-colors"
+          <form
+            method="post"
+            action="{% url 'toggle_order_mode' %}"
+            class="w-1/2 m-0"
           >
-            ✖ Close Ticket
-          </a>
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="w-full text-center text-red-600 bg-white border border-red-300 hover:bg-red-50 focus:ring-4 focus:ring-red-100 font-bold rounded-lg text-sm px-3 py-2.5 transition-colors"
+            >
+              ✖ Close Ticket
+            </button>
+          </form>
           <a
             href="{% url 'checkout' %}"
             class="w-1/2 text-center text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-bold rounded-lg text-sm px-3 py-2.5 transition-colors shadow-sm flex items-center justify-center gap-1"
@@ -175,12 +190,15 @@
       </div>
       {% else %}
       <div class="bg-gray-50 p-4 border-t border-gray-200">
-        <a
-          href="{% url 'toggle_order_mode' %}"
-          class="block w-full text-center text-red-600 bg-white border border-red-300 hover:bg-red-50 focus:ring-4 focus:ring-red-100 font-bold rounded-lg text-sm px-3 py-2.5 transition-colors"
-        >
-          ✖ Close Ticket
-        </a>
+        <form method="post" action="{% url 'toggle_order_mode' %}" class="m-0">
+          {% csrf_token %}
+          <button
+            type="submit"
+            class="block w-full text-center text-red-600 bg-white border border-red-300 hover:bg-red-50 focus:ring-4 focus:ring-red-100 font-bold rounded-lg text-sm px-3 py-2.5 transition-colors"
+          >
+            ✖ Close Ticket
+          </button>
+        </form>
       </div>
       {% endif %}
     </div>
