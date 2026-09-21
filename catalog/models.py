@@ -1,5 +1,6 @@
 import os
 from django.db import models
+from django.contrib.auth.models import User
 from PIL import Image
 
 
@@ -79,13 +80,18 @@ class Item(models.Model):
 # PHASE 2: POS & ORDER MANAGEMENT MODELS
 # ==========================================
 
-
 class Client(models.Model):
     name = models.CharField(max_length=200)
     shop_name = models.CharField(max_length=200, blank=True, null=True)
     phone_number = models.CharField(max_length=50, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # --- NEW: CRM Ownership ---
+    # Links the client to a specific salesman. If null, it belongs to the Admin.
+    salesman = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="clients"
+    )
 
     class Meta:
         unique_together = ("name", "shop_name")
@@ -101,6 +107,15 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     delivery_date = models.DateField(blank=True, null=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    # --- NEW: CRM Ownership ---
+    salesman = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_orders",
+    )
 
     def __str__(self):
         return f"Order #{self.id} - {self.client.name}"
@@ -119,3 +134,29 @@ class OrderItem(models.Model):
     @property
     def total_price(self):
         return self.quantity * self.price_at_order
+
+
+# ==========================================
+# PHASE 6: SALESMAN PRICING OVERRIDES
+# ==========================================
+
+class SalesmanProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='salesman_profile')
+    # Default is 1.00 (No change). 1.10 = +10%. 0.90 = -10%.
+    global_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
+
+    def __str__(self):
+        return f"{self.user.username} Profile"
+
+
+class SalesmanPriceOverride(models.Model):
+    salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='price_overrides')
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='overrides')
+    custom_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        # Prevents a single salesman from having multiple conflicting overrides for the same item
+        unique_together = ('salesman', 'item')
+
+    def __str__(self):
+        return f"{self.salesman.username} - {self.item.name}: ${self.custom_price}"

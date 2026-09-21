@@ -1,23 +1,50 @@
 {% extends 'catalog/base.html' %} {% block content %}
 <!-- Top Action Bar -->
 <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+  <!-- Left Side: Dynamic Actions based on view -->
+  {% if is_all_items_view %}
+  <div class="flex flex-wrap gap-2 w-full md:w-auto justify-center">
+    {% if not is_ordering %}
+    <form method="post" action="{% url 'toggle_order_mode' %}" class="m-0">
+      {% csrf_token %}
+      <button
+        type="submit"
+        class="text-white bg-brand-600 hover:bg-brand-700 font-medium rounded-lg text-sm px-4 py-2.5 shadow-sm transition-colors flex items-center gap-2"
+      >
+        🛒 Open Ticket
+      </button>
+    </form>
+    {% endif %}
+    <!-- Trigger for the Margin Modal -->
+    <button
+      data-modal-target="multiplierModal"
+      data-modal-toggle="multiplierModal"
+      class="text-gray-900 bg-yellow-400 hover:bg-yellow-500 font-bold rounded-lg text-sm px-4 py-2.5 shadow-sm transition-colors flex items-center gap-2"
+    >
+      ⚖️ Edit Margin
+    </button>
+  </div>
+  {% else %}
   <a
     href="{% url 'category_list' %}"
     class="text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 shadow-sm transition-colors flex items-center gap-2"
   >
     <span>&larr;</span> Back to Categories
   </a>
+  {% endif %}
 
+  <!-- Center Title -->
   <h1
-    class="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight text-center"
+    class="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight text-center flex-grow"
   >
-    {% if category %} {{ category.name }} {% else %} Search Results for: "<span
+    {% if is_all_items_view %} All Items Dashboard {% elif category %} {{
+    category.name }} {% else %} Search Results for: "<span
       class="text-brand-600"
       >{{ search_query }}</span
     >" {% endif %}
   </h1>
 
-  <!-- NEW SECURE LOGIC: Only show PDF button if category exists AND user is logged in -->
+  <!-- Right Side PDF Button (Hidden on All Items to save space) -->
   {% if category and user.is_authenticated %}
   <a
     href="{% url 'item_list_pdf' category.id %}"
@@ -26,7 +53,7 @@
     📄 Download PDF
   </a>
   {% else %}
-  <div class="w-[140px]"></div>
+  <div class="hidden md:block w-[140px]"></div>
   {% endif %}
 </div>
 
@@ -286,12 +313,26 @@
             </button>
             {% endif %} {% endif %}
 
+            <!-- SECURITY: Admins get the normal edit button. Salesmen get the Price Override Modal -->
+            {% if user.is_superuser %}
             <a
               href="{% url 'edit_item' item.id %}"
               class="text-yellow-600 bg-white border border-yellow-400 hover:bg-yellow-50 focus:ring-4 focus:ring-yellow-100 font-medium rounded-lg text-sm px-3 py-2 transition-colors flex items-center justify-center"
+              title="Admin Edit"
             >
               ✏️
             </a>
+            {% else %}
+            <button
+              data-modal-target="overrideModal{{ item.id }}"
+              data-modal-toggle="overrideModal{{ item.id }}"
+              type="button"
+              class="text-gray-900 bg-yellow-300 hover:bg-yellow-400 focus:ring-4 focus:ring-yellow-100 font-bold rounded-lg text-sm px-3 py-2 transition-colors flex items-center justify-center"
+              title="Custom Price Override"
+            >
+              💵
+            </button>
+            {% endif %}
           </div>
           {% endif %}
         </div>
@@ -400,6 +441,90 @@
           </div>
         </div>
       </div>
+      {% endif %} 
+
+      <!-- Flowbite Modal for Price Override (Salesmen Only) -->
+      {% if not user.is_superuser %}
+      <div
+        id="overrideModal{{ item.id }}"
+        tabindex="-1"
+        aria-hidden="true"
+        class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full backdrop-blur-sm bg-gray-900/50"
+      >
+        <div class="relative p-4 w-full max-w-sm max-h-full">
+          <div class="relative bg-white rounded-xl shadow">
+            <div
+              class="flex items-center justify-between p-4 border-b rounded-t bg-yellow-400"
+            >
+              <h3 class="text-lg font-bold text-gray-900">
+                Custom Price: {{ item.name }}
+              </h3>
+              <button
+                type="button"
+                class="text-gray-900 bg-transparent hover:bg-yellow-500 rounded-lg text-sm w-8 h-8 ms-auto flex justify-center items-center"
+                data-modal-hide="overrideModal{{ item.id }}"
+              >
+                ✖
+              </button>
+            </div>
+            
+            <form method="post" action="{% url 'override_item_price' item.id %}">
+              {% csrf_token %}
+              <div class="p-4 space-y-4">
+                <!-- Informational Text for Admin Price -->
+                <p class="text-sm font-bold text-gray-700 text-center bg-gray-100 py-2 rounded-lg border border-gray-200">
+                  Admin Base Price: <span class="text-brand-600">${{ item.price|default:"0.00" }}</span>
+                </p>
+                <p class="text-xs text-gray-500 text-center">
+                  Set a locked price for this item. This will ignore your global multiplier.
+                </p>
+                <div>
+                  <label class="block mb-2 text-sm font-bold text-gray-900 text-center">New Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="custom_price"
+                    value="{{ item.price }}"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-2xl font-bold rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full text-center p-2.5"
+                    required
+                  />
+                </div>
+              </div>
+              <div class="flex flex-col gap-2 p-4 border-t border-gray-200 rounded-b">
+                <!-- Button 1: Green Save -->
+                <button
+                  type="submit"
+                  name="action"
+                  value="set"
+                  class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-bold rounded-lg text-sm px-5 py-3 text-center transition-colors shadow-sm"
+                >
+                  💾 Save Custom Price
+                </button>
+                
+                <!-- Button 2: Blue Reset (Margin) -->
+                <button
+                  type="submit"
+                  name="action"
+                  value="reset_to_margin"
+                  class="w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-bold rounded-lg text-sm px-5 py-3 text-center transition-colors shadow-sm"
+                >
+                  🔄 Reset to {{ current_margin|default:"0" }}%
+                </button>
+
+                <!-- Button 3: Red Reset (Admin Price) -->
+                <button
+                  type="submit"
+                  name="action"
+                  value="reset_to_main"
+                  class="w-full text-red-600 bg-white border border-red-600 hover:bg-red-50 focus:ring-4 focus:outline-none focus:ring-red-300 font-bold rounded-lg text-sm px-5 py-3 text-center transition-colors mt-2"
+                >
+                  🚨 Reset to Main Price
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
       {% endif %} {% empty %}
       <div
         class="col-span-full flex flex-col items-center justify-center py-12 text-center"
@@ -419,6 +544,94 @@
   </div>
 </div>
 
+<!-- Flowbite Modal for Global Margin (Salesmen Only) -->
+{% if is_all_items_view %}
+<div
+  id="multiplierModal"
+  tabindex="-1"
+  aria-hidden="true"
+  class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full backdrop-blur-sm bg-gray-900/50"
+>
+  <div class="relative p-4 w-full max-w-sm max-h-full">
+    <div class="relative bg-white rounded-xl shadow border border-gray-200">
+      <div class="flex items-center justify-between p-4 border-b rounded-t bg-gray-50">
+        <h3 class="text-lg font-bold text-gray-900">Global Margin (%)</h3>
+        <button
+          type="button"
+          class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto flex justify-center items-center"
+          data-modal-hide="multiplierModal"
+        >
+          ✖
+        </button>
+      </div>
+      
+      <form method="post" action="{% url 'update_salesman_margin' %}">
+        {% csrf_token %}
+        <div class="p-6 text-center">
+          <p class="text-sm text-gray-500 mb-6">
+            Adjust prices across the entire catalog. (Does not affect manually locked items).
+          </p>
+
+          <div class="flex items-center justify-center gap-4 mb-6">
+            <button
+              type="button"
+              onclick="document.getElementById('multiplierInput').stepDown()"
+              class="w-12 h-12 flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 font-black text-2xl border border-red-200 transition-colors"
+            >
+              -
+            </button>
+
+            <div class="relative">
+              <!-- Memory Box & Decimals Added -->
+              <input
+                type="number"
+                step="0.01"
+                id="multiplierInput"
+                name="multiplier_percentage"
+                value="{{ current_margin|default:'0' }}"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-3xl font-black rounded-lg focus:ring-brand-500 focus:border-brand-500 block w-24 text-center p-2"
+                required
+              />
+              <span class="absolute right-2 top-3 text-xl font-bold text-gray-500">%</span>
+            </div>
+
+            <button
+              type="button"
+              onclick="document.getElementById('multiplierInput').stepUp()"
+              class="w-12 h-12 flex items-center justify-center rounded-full bg-green-50 text-green-600 hover:bg-green-100 font-black text-2xl border border-green-200 transition-colors"
+            >
+              +
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            name="action"
+            value="update"
+            class="w-full text-white bg-gray-900 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-lg text-lg px-5 py-3 mb-4 text-center transition-colors"
+          >
+            Apply New Margin
+          </button>
+
+          <!-- Panic Button Added -->
+          <div class="pt-4 border-t border-gray-200">
+            <button
+              type="submit"
+              name="action"
+              value="reset_all"
+              class="w-full text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 focus:ring-4 focus:outline-none focus:ring-red-200 font-bold rounded-lg text-sm px-5 py-2.5 text-center transition-colors"
+              onclick="return confirm('Are you sure? This will wipe your margin to 0% and delete EVERY manual price edit you have made.');"
+            >
+              🚨 Reset Entire Dashboard
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Client-Side Live Filter Script -->
 <script>
   document.addEventListener("DOMContentLoaded", function () {
@@ -430,13 +643,11 @@
         const query = this.value.toLowerCase().trim();
 
         itemCards.forEach((card) => {
-          // Read the name and description from the card
           const name =
             card.querySelector(".item-name")?.textContent.toLowerCase() || "";
           const desc =
             card.querySelector(".item-desc")?.textContent.toLowerCase() || "";
 
-          // Toggle visibility instantly based on the typed query
           if (name.includes(query) || desc.includes(query)) {
             card.style.display = "";
           } else {

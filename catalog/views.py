@@ -11,15 +11,85 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 
-from .models import Category, Item, Client, Order, OrderItem
+from .models import (
+    Category,
+    Item,
+    Client,
+    Order,
+    OrderItem,
+    SalesmanProfile,
+    SalesmanPriceOverride,
+)
 from .forms import ItemForm
 from .utils import render_to_pdf
 
+# ==========================================
+# PHASE 6: SALESMAN PRICING ENGINE (HELPERS)
+# ==========================================
+
+
+def get_single_item_price(user, item):
+    if not user.is_authenticated or not user.groups.filter(name="Salesman").exists():
+        return item.price
+
+    override = SalesmanPriceOverride.objects.filter(salesman=user, item=item).first()
+    if override:
+        return override.custom_price
+
+    profile = getattr(user, "salesman_profile", None)
+    multiplier = profile.global_multiplier if profile else Decimal("1.00")
+    return round(item.price * multiplier, 2)
+
+
+def apply_salesman_prices(user, items_queryset):
+    items = list(items_queryset)
+    if not user.is_authenticated or not user.groups.filter(name="Salesman").exists():
+        return items
+
+    profile = getattr(user, "salesman_profile", None)
+    multiplier = profile.global_multiplier if profile else Decimal("1.00")
+
+    overrides = SalesmanPriceOverride.objects.filter(salesman=user, item__in=items)
+    override_dict = {o.item_id: o.custom_price for o in overrides}
+
+    for item in items:
+        if item.id in override_dict:
+            item.price = override_dict[item.id]
+        else:
+            item.price = round(item.price * multiplier, 2)
+
+    return items
+
+
+def get_salesman_margin_percentage(user):
+    """NEW: Calculates the current margin percentage to display in the HTML UI"""
+    if not user.is_authenticated or not user.groups.filter(name="Salesman").exists():
+        return 0
+    profile = getattr(user, "salesman_profile", None)
+    if profile:
+        multiplier = profile.global_multiplier
+        # Converts 1.10 into 10, 0.95 into -5, etc. normalizes trailing zeros
+        val = (multiplier - Decimal("1.00")) * Decimal("100.00")
+        return val.normalize()
+    return 0
+
+
+# ==========================================
+# MAIN VIEWS
+# ==========================================
+
 
 def category_list(request):
-    is_ordering = request.session.get("is_ordering", False)
     query = request.GET.get("q")
 
+    if (
+        not query
+        and request.user.is_authenticated
+        and request.user.groups.filter(name="Salesman").exists()
+    ):
+        return redirect("all_items")
+
+    is_ordering = request.session.get("is_ordering", False)
     cart = request.session.get("ticket_cart", {})
     cart_items = []
     cart_total = Decimal(0)
@@ -28,6 +98,7 @@ def category_list(request):
         for item_id_str, qty in cart.items():
             try:
                 cart_item = Item.objects.get(id=int(item_id_str))
+                cart_item.price = get_single_item_price(request.user, cart_item)
                 item_total = cart_item.price * qty
                 cart_items.append(
                     {
@@ -40,46 +111,36 @@ def category_list(request):
             except Item.DoesNotExist:
                 pass
 
+    context = {
+        "is_ordering": is_ordering,
+        "cart_items": cart_items,
+        "cart_total": cart_total,
+        "current_margin": get_salesman_margin_percentage(
+            request.user
+        ),  # NEW: Pass margin to template
+    }
+
     if query:
-        items = Item.objects.filter(
+        items_qs = Item.objects.filter(
             (Q(name__icontains=query) | Q(description__icontains=query))
             & Q(is_active=True)
         ).order_by(Lower("name"))
 
-        return render(
-            request,
-            "catalog/item_list.html",
-            {
-                "items": items,
-                "search_query": query,
-                "category": None,
-                "is_ordering": is_ordering,
-                "cart_items": cart_items,
-                "cart_total": cart_total,
-            },
-        )
+        items = apply_salesman_prices(request.user, items_qs)
+        context.update({"items": items, "search_query": query, "category": None})
+        return render(request, "catalog/item_list.html", context)
     else:
         categories = Category.objects.all()
-        return render(
-            request,
-            "catalog/category_list.html",
-            {
-                "categories": categories,
-                "is_ordering": is_ordering,
-                "cart_items": cart_items,
-                "cart_total": cart_total,
-            },
-        )
+        context.update({"categories": categories})
+        return render(request, "catalog/category_list.html", context)
 
 
-def item_list(request, category_id):
+@login_required
+def all_items(request):
     is_ordering = request.session.get("is_ordering", False)
-    category = get_object_or_404(Category, id=category_id)
 
-    if request.user.is_authenticated and category.name == "Uncategorized":
-        items = category.items.all().order_by(Lower("name"))
-    else:
-        items = category.items.filter(is_active=True).order_by(Lower("name"))
+    items_qs = Item.objects.filter(is_active=True).order_by(Lower("name"))
+    items = apply_salesman_prices(request.user, items_qs)
 
     cart = request.session.get("ticket_cart", {})
     cart_items = []
@@ -90,6 +151,59 @@ def item_list(request, category_id):
         for item_id_str, qty in cart.items():
             try:
                 cart_item = Item.objects.get(id=int(item_id_str))
+                cart_item.price = get_single_item_price(request.user, cart_item)
+                item_total = cart_item.price * qty
+                cart_items.append(
+                    {
+                        "item": cart_item,
+                        "quantity": qty,
+                        "total_price": item_total,
+                    }
+                )
+                cart_item_ids.append(cart_item.id)
+                cart_total += item_total
+            except Item.DoesNotExist:
+                pass
+
+    return render(
+        request,
+        "catalog/item_list.html",
+        {
+            "category": None,
+            "items": items,
+            "is_ordering": is_ordering,
+            "cart_items": cart_items,
+            "cart_item_ids": cart_item_ids,
+            "cart_total": cart_total,
+            "is_all_items_view": True,
+            "current_margin": get_salesman_margin_percentage(
+                request.user
+            ),  # NEW: Pass margin to template
+        },
+    )
+
+
+def item_list(request, category_id):
+    is_ordering = request.session.get("is_ordering", False)
+    category = get_object_or_404(Category, id=category_id)
+
+    if request.user.is_authenticated and category.name == "Uncategorized":
+        items_qs = category.items.all().order_by(Lower("name"))
+    else:
+        items_qs = category.items.filter(is_active=True).order_by(Lower("name"))
+
+    items = apply_salesman_prices(request.user, items_qs)
+
+    cart = request.session.get("ticket_cart", {})
+    cart_items = []
+    cart_item_ids = []
+    cart_total = Decimal(0)
+
+    if is_ordering:
+        for item_id_str, qty in cart.items():
+            try:
+                cart_item = Item.objects.get(id=int(item_id_str))
+                cart_item.price = get_single_item_price(request.user, cart_item)
                 item_total = cart_item.price * qty
                 cart_items.append(
                     {
@@ -113,6 +227,9 @@ def item_list(request, category_id):
             "cart_items": cart_items,
             "cart_item_ids": cart_item_ids,
             "cart_total": cart_total,
+            "current_margin": get_salesman_margin_percentage(
+                request.user
+            ),  # NEW: Pass margin to template
         },
     )
 
@@ -120,7 +237,10 @@ def item_list(request, category_id):
 @login_required
 def item_list_pdf(request, category_id):
     category = get_object_or_404(Category, id=category_id)
-    items = category.items.filter(is_active=True).order_by(Lower("name"))
+    items_qs = category.items.filter(is_active=True).order_by(Lower("name"))
+
+    items = apply_salesman_prices(request.user, items_qs)
+
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
 
     context = {
@@ -268,7 +388,6 @@ def duplicate_category(request, category_id):
 
 @login_required
 def edit_category_image(request, category_id):
-    # Security Check: Only allow Admins/Staff to edit category images
     if not request.user.is_staff:
         messages.error(
             request, "Access Denied: Only administrators can update category images."
@@ -282,7 +401,7 @@ def edit_category_image(request, category_id):
 
         if new_image:
             category.image = new_image
-            category.save()  # This triggers the PIL compression in your models.py
+            category.save()
             messages.success(
                 request, f"Background image updated successfully for '{category.name}'!"
             )
@@ -303,6 +422,8 @@ def sync_inventory(request):
     if request.method == "POST":
         excel_file = request.FILES.get("excel_file")
 
+        reset_salesman_prices = request.POST.get("reset_salesman_prices") == "on"
+
         if not excel_file:
             messages.error(request, "Please select a file to upload.")
             return redirect("sync_inventory")
@@ -314,10 +435,12 @@ def sync_inventory(request):
         current_processing_barcode = "N/A"
 
         try:
-            # --- SECURITY ADDITION: The Atomic Sandbox ---
-            # If ANY code fails inside this 'with' block, Django instantly discards
-            # all changes made to the database during this function, keeping the DB safe.
             with transaction.atomic():
+
+                if reset_salesman_prices:
+                    SalesmanPriceOverride.objects.all().delete()
+                    SalesmanProfile.objects.update(global_multiplier=Decimal("1.00"))
+
                 uncategorized_folder, created = Category.objects.get_or_create(
                     name="Uncategorized"
                 )
@@ -327,7 +450,9 @@ def sync_inventory(request):
 
                 rows = list(sheet.iter_rows(values_only=True))
                 if len(rows) < 2:
-                    messages.error(request, "The uploaded file is empty or missing data.")
+                    messages.error(
+                        request, "The uploaded file is empty or missing data."
+                    )
                     return redirect("sync_inventory")
 
                 headers = [str(col).upper().strip() if col else "" for col in rows[0]]
@@ -378,7 +503,6 @@ def sync_inventory(request):
                     except ValueError:
                         stock = 0
 
-                    # --- NEW LOGIC: Round the Excel price to 2 decimal places to match database ---
                     try:
                         raw_val = str(raw_salepr) if raw_salepr is not None else "0.00"
                         price = round(Decimal(raw_val), 2)
@@ -422,19 +546,17 @@ def sync_inventory(request):
                                 is_active=False,
                             )
 
-                # Remove items that are no longer in the Excel file
                 uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
 
                 uncategorized_count = uncategorized_folder.items.count()
 
-                messages.success(
-                    request,
-                    f"🚀 Sync Complete! {items_updated} active items were updated. There are {uncategorized_count} items currently sitting in the 'Uncategorized' folder.",
-                )
+                success_msg = f"🚀 Sync Complete! {items_updated} items updated. {uncategorized_count} sitting in 'Uncategorized'."
+                if reset_salesman_prices:
+                    success_msg += " ⚠️ All Salesman Custom Prices were successfully WIPED and reset to default."
+
+                messages.success(request, success_msg)
 
         except Exception as e:
-            # Because of the transaction.atomic() above, if the code reaches this point, 
-            # the database has safely undone everything, and we just show the error.
             error_message = f"Crash detected at Row {current_row_number} (Barcode: {current_processing_barcode}). System Error: {str(e)}"
             messages.error(request, error_message)
 
@@ -448,8 +570,6 @@ def sync_inventory(request):
 # ==========================================
 @login_required
 def toggle_order_mode(request):
-    # --- SECURITY ADDITION: POST Enforcement ---
-    # Only execute if this is a secure, intentional button press (POST)
     if request.method == "POST":
         current_state = request.session.get("is_ordering", False)
         request.session["is_ordering"] = not current_state
@@ -457,6 +577,8 @@ def toggle_order_mode(request):
         if current_state == True:
             request.session["ticket_cart"] = {}
 
+    if request.user.groups.filter(name="Salesman").exists():
+        return redirect("all_items")
     return redirect("category_list")
 
 
@@ -476,6 +598,8 @@ def add_to_ticket(request, item_id):
 
         request.session["ticket_cart"] = cart
 
+        if request.user.groups.filter(name="Salesman").exists():
+            return redirect("all_items")
         if item.category:
             return redirect("item_list", category_id=item.category.id)
 
@@ -507,9 +631,12 @@ def update_cart_item(request, item_id):
 
 @login_required
 def checkout(request):
+    is_salesman = request.user.groups.filter(name="Salesman").exists()
     cart = request.session.get("ticket_cart", {})
 
     if not cart:
+        if is_salesman:
+            return redirect("all_items")
         return redirect("category_list")
 
     cart_items = []
@@ -518,6 +645,7 @@ def checkout(request):
     for item_id_str, qty in cart.items():
         try:
             item = Item.objects.get(id=int(item_id_str))
+            item.price = get_single_item_price(request.user, item)
             total_item_price = item.price * qty
             cart_items.append(
                 {"item": item, "quantity": qty, "total_price": total_item_price}
@@ -529,9 +657,6 @@ def checkout(request):
     if request.method == "POST":
         client_id = request.POST.get("client_id")
 
-        # --- SECURITY ADDITION: Order Creation Sandbox ---
-        # Ensures that if something fails while saving items to a ticket, 
-        # the system doesn't create an empty "ghost" order in the database.
         with transaction.atomic():
             if client_id:
                 client = get_object_or_404(Client, id=client_id)
@@ -544,7 +669,11 @@ def checkout(request):
                 client, created = Client.objects.get_or_create(
                     name=new_name,
                     shop_name=new_shop,
-                    defaults={"phone_number": new_phone, "address": new_address},
+                    defaults={
+                        "phone_number": new_phone,
+                        "address": new_address,
+                        "salesman": request.user if is_salesman else None,
+                    },
                 )
 
             delivery_date = request.POST.get("delivery_date") or None
@@ -552,6 +681,7 @@ def checkout(request):
                 client=client,
                 delivery_date=delivery_date,
                 total_price=0,
+                salesman=request.user if is_salesman else None,
             )
 
             actual_total = Decimal(0)
@@ -572,12 +702,20 @@ def checkout(request):
 
         return redirect("client_detail", client_id=client.id)
 
-    clients = Client.objects.all().order_by("name")
+    if is_salesman:
+        clients = Client.objects.filter(salesman=request.user).order_by("name")
+    else:
+        clients = Client.objects.all().order_by("name")
 
     return render(
         request,
         "catalog/checkout.html",
-        {"cart_items": cart_items, "cart_total": cart_total, "clients": clients},
+        {
+            "cart_items": cart_items,
+            "cart_total": cart_total,
+            "clients": clients,
+            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+        },
     )
 
 
@@ -588,37 +726,64 @@ def checkout(request):
 
 @login_required
 def client_list(request):
-    clients = Client.objects.all().order_by("name")
-    return render(request, "catalog/client_list.html", {"clients": clients})
+    if request.user.groups.filter(name="Salesman").exists():
+        clients = Client.objects.filter(salesman=request.user).order_by("name")
+    else:
+        clients = Client.objects.all().order_by("name")
+
+    return render(
+        request,
+        "catalog/client_list.html",
+        {
+            "clients": clients,
+            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+        },
+    )
 
 
 @login_required
 def client_detail(request, client_id):
     client = get_object_or_404(Client, id=client_id)
 
+    if (
+        request.user.groups.filter(name="Salesman").exists()
+        and client.salesman != request.user
+    ):
+        messages.error(request, "Access Denied: You can only view your own clients.")
+        return redirect("client_list")
+
     orders_qs = client.orders.all().order_by("created_at")
     orders = []
-
     for i, order in enumerate(orders_qs, 1):
         order.client_order_number = i
         orders.append(order)
-
     orders.reverse()
-
     return render(
-        request, "catalog/client_detail.html", {"client": client, "orders": orders}
+        request,
+        "catalog/client_detail.html",
+        {
+            "client": client,
+            "orders": orders,
+            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+        },
     )
 
 
 @login_required
 def order_detail(request, order_id):
     order = get_object_or_404(Order, id=order_id)
-    order_items = order.items.all()
 
+    if (
+        request.user.groups.filter(name="Salesman").exists()
+        and order.salesman != request.user
+    ):
+        messages.error(request, "Access Denied: You can only view your own orders.")
+        return redirect("client_list")
+
+    order_items = order.items.all()
     client_order_number = Order.objects.filter(
         client=order.client, id__lte=order.id
     ).count()
-
     return render(
         request,
         "catalog/order_detail.html",
@@ -626,6 +791,7 @@ def order_detail(request, order_id):
             "order": order,
             "order_items": order_items,
             "client_order_number": client_order_number,
+            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
         },
     )
 
@@ -633,13 +799,18 @@ def order_detail(request, order_id):
 @login_required
 def order_pdf(request, order_id):
     order = get_object_or_404(Order, id=order_id)
+
+    if (
+        request.user.groups.filter(name="Salesman").exists()
+        and order.salesman != request.user
+    ):
+        return HttpResponse("Access Denied")
+
     order_items = order.items.all()
     logo_path = os.path.join(settings.MEDIA_ROOT, "logo.png")
-
     client_order_number = Order.objects.filter(
         client=order.client, id__lte=order.id
     ).count()
-
     context = {
         "order": order,
         "order_items": order_items,
@@ -647,16 +818,13 @@ def order_pdf(request, order_id):
         "logo_path": logo_path,
         "client_order_number": client_order_number,
     }
-
     pdf = render_to_pdf("catalog/receipt_pdf_template.html", context)
-
     if pdf:
         response = HttpResponse(pdf, content_type="application/pdf")
         filename = f"{order.client.name}_#{client_order_number}.pdf"
         content = f'attachment; filename="{filename}"'
         response["Content-Disposition"] = content
         return response
-
     return HttpResponse("Error generating PDF")
 
 
@@ -668,10 +836,12 @@ def live_search(request):
     results = []
 
     if query.strip():
-        items = Item.objects.filter(
+        items_qs = Item.objects.filter(
             (Q(name__icontains=query) | Q(description__icontains=query))
             & Q(is_active=True)
         ).order_by(Lower("name"))[:15]
+
+        items = apply_salesman_prices(request.user, items_qs)
 
         for item in items:
             if item.category:
@@ -686,3 +856,100 @@ def live_search(request):
                 )
 
     return JsonResponse({"results": results})
+
+
+# ==========================================
+# PHASE 6: SALESMAN OVERRIDE ACTIONS
+# ==========================================
+@login_required
+def update_salesman_margin(request):
+    if (
+        request.method == "POST"
+        and request.user.groups.filter(name="Salesman").exists()
+    ):
+        action = request.POST.get("action", "update")
+
+        if action == "reset_all":
+            # --- NEW: PANIC BUTTON LOGIC ---
+            with transaction.atomic():
+                SalesmanPriceOverride.objects.filter(salesman=request.user).delete()
+                profile, created = SalesmanProfile.objects.get_or_create(
+                    user=request.user
+                )
+                profile.global_multiplier = Decimal("1.00")
+                profile.save()
+            messages.success(
+                request,
+                "🚨 Dashboard Reset: All custom prices wiped and margin returned to 0%. You are now seeing Admin base prices.",
+            )
+
+        else:
+            try:
+                percentage = Decimal(request.POST.get("multiplier_percentage", 0))
+                multiplier = Decimal("1.00") + (percentage / Decimal("100.00"))
+
+                profile, created = SalesmanProfile.objects.get_or_create(
+                    user=request.user
+                )
+                profile.global_multiplier = multiplier
+                profile.save()
+
+                messages.success(
+                    request,
+                    f"Global margin updated! All base prices shifted by {percentage:g}%",
+                )
+            except Exception as e:
+                messages.error(request, "Invalid margin value.")
+
+    return redirect(request.META.get("HTTP_REFERER", "all_items"))
+
+
+@login_required
+def override_item_price(request, item_id):
+    if (
+        request.method == "POST"
+        and request.user.groups.filter(name="Salesman").exists()
+    ):
+        # We fetch the exact, un-modified Master Price from the DB
+        item = get_object_or_404(Item, id=item_id)
+        action = request.POST.get("action")
+
+        if action == "set":
+            try:
+                custom_price = Decimal(request.POST.get("custom_price"))
+                SalesmanPriceOverride.objects.update_or_create(
+                    salesman=request.user,
+                    item=item,
+                    defaults={"custom_price": custom_price},
+                )
+                messages.success(
+                    request,
+                    f"Saved: {item.name} is manually priced at ${custom_price}.",
+                )
+            except:
+                messages.error(request, "Invalid price format.")
+
+        elif action == "reset_to_margin":
+            # --- NEW: BLUE BUTTON (Delete Lock, let Global Margin take over) ---
+            SalesmanPriceOverride.objects.filter(
+                salesman=request.user, item=item
+            ).delete()
+            current_margin = get_salesman_margin_percentage(request.user)
+            messages.success(
+                request,
+                f"Updated: {item.name} is now following your global margin ({current_margin:g}%).",
+            )
+
+        elif action == "reset_to_main":
+            # --- NEW: RED BUTTON (Lock to exact Admin Price) ---
+            SalesmanPriceOverride.objects.update_or_create(
+                salesman=request.user,
+                item=item,
+                defaults={"custom_price": item.price},
+            )
+            messages.success(
+                request,
+                f"Admin Price Locked: {item.name} is locked to the master price (${item.price}).",
+            )
+
+    return redirect(request.META.get("HTTP_REFERER", "all_items"))

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Q  # <--- NEW: Imports the Q object for 'OR' queries
-from .models import Category, Item, Client, Order, OrderItem
+from .models import Category, Item, Client, Order, OrderItem, SalesmanProfile, SalesmanPriceOverride
 
 
 # --- NEW: CUSTOM FILTER FOR BARCODE ---
@@ -54,13 +54,30 @@ class OrderItemInline(admin.TabularInline):
     extra = 0
 
 
+# --- NEW: CLIENT ADMIN VIEW (CRM Ownership) ---
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ("name", "shop_name", "salesman", "created_at")
+    list_filter = ("salesman",)
+    search_fields = ("name", "shop_name")
+
+
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "client", "created_at", "delivery_date", "total_price")
-    list_filter = ("created_at", "delivery_date")
+    # --- UPDATED: Added salesman to list_display and list_filter ---
+    list_display = ("id", "client", "salesman", "created_at", "delivery_date", "total_price")
+    list_filter = ("salesman", "created_at", "delivery_date")
     inlines = [OrderItemInline]
+
+
+# --- PHASE 6: SALESMAN ADMIN VIEWS ---
+class SalesmanPriceOverrideAdmin(admin.ModelAdmin):
+    list_display = ("salesman", "item", "custom_price")
+    list_filter = ("salesman", "item__category")
+    search_fields = ("salesman__username", "item__name", "item__barcode")
 
 
 admin.site.register(Category)
 admin.site.register(Item, ItemAdmin)
-admin.site.register(Client)
+admin.site.register(Client, ClientAdmin)  # <--- UPDATED
 admin.site.register(Order, OrderAdmin)
+admin.site.register(SalesmanProfile)
+admin.site.register(SalesmanPriceOverride, SalesmanPriceOverrideAdmin)
