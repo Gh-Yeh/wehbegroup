@@ -1,0 +1,108 @@
+{% extends 'catalog/base.html' %} 
+{% block content %}
+
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+  <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+    📊 Salesman Command Center
+  </h1>
+  <button 
+    data-modal-target="addSalesmanModal" 
+    data-modal-toggle="addSalesmanModal" 
+    class="text-white bg-brand-600 hover:bg-brand-700 font-bold rounded-lg text-sm px-5 py-2.5 transition-colors shadow-sm flex items-center gap-2"
+  >
+    ➕ Add New Salesman
+  </button>
+</div>
+
+<!-- KPI Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+  {% for data in dashboard_data %}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+    
+    <!-- Card Header -->
+    <div class="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+      <h3 class="text-lg font-extrabold text-gray-900">👤 {{ data.user.username|title }}</h3>
+      
+      <!-- Margin Badge -->
+      <span class="
+        {% if data.current_margin > 0 %}bg-green-100 text-green-800 border-green-200
+        {% elif data.current_margin < 0 %}bg-red-100 text-red-800 border-red-200
+        {% else %}bg-gray-200 text-gray-800 border-gray-300{% endif %} 
+        text-xs font-bold px-2.5 py-1 rounded border shadow-sm">
+        Margin: {% if data.current_margin > 0 %}+{% endif %}{{ data.current_margin }}%
+      </span>
+    </div>
+
+    <!-- Card Body Data -->
+    <div class="p-4 flex-grow space-y-4">
+      <div class="flex justify-between items-center border-b border-gray-100 pb-3">
+        <span class="text-gray-500 font-bold text-sm uppercase tracking-wide">🤝 Clients Acquired</span>
+        <span class="font-black text-gray-900 text-lg">{{ data.client_count }}</span>
+      </div>
+      <div class="flex justify-between items-center border-b border-gray-100 pb-3">
+        <span class="text-gray-500 font-bold text-sm uppercase tracking-wide">🛒 Tickets Processed</span>
+        <span class="font-black text-gray-900 text-lg">{{ data.order_count }}</span>
+      </div>
+      <div class="flex justify-between items-center pt-2">
+        <span class="text-gray-500 font-bold text-sm uppercase tracking-wide">💵 Total Revenue</span>
+        <span class="font-black text-green-600 text-2xl">${{ data.total_revenue }}</span>
+      </div>
+    </div>
+
+  </div>
+  {% empty %}
+  <div class="col-span-full py-16 text-center bg-white rounded-xl shadow-sm border border-gray-200">
+    <span class="text-6xl mb-4 block">👻</span>
+    <h3 class="text-2xl font-bold text-gray-900 mb-2">No Salesmen Found</h3>
+    <p class="text-gray-500">Click the "Add New Salesman" button above to create your first employee account.</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Flowbite Modal for Adding a Salesman -->
+<div id="addSalesmanModal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full backdrop-blur-sm bg-gray-900/50">
+  <div class="relative p-4 w-full max-w-md max-h-full">
+    <div class="relative bg-white rounded-xl shadow border border-gray-200">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-4 border-b rounded-t bg-brand-600">
+        <h3 class="text-lg font-bold text-white">Create Salesman Account</h3>
+        <button type="button" class="text-white bg-transparent hover:bg-brand-700 rounded-lg text-sm w-8 h-8 ms-auto flex justify-center items-center transition-colors" data-modal-hide="addSalesmanModal">
+          ✖
+        </button>
+      </div>
+
+      <!-- NEW: Action securely mapped to the Django backend route -->
+      <form method="post" action="{% url 'add_salesman' %}"> 
+        {% csrf_token %}
+        <div class="p-6 space-y-5">
+          <p class="text-sm text-gray-500 text-center mb-2">
+            This will instantly generate a new employee login profile with strict Salesman permissions and an isolated database view.
+          </p>
+
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900">Username (Login ID)</label>
+            <input type="text" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block w-full p-2.5" placeholder="e.g. j.smith" required />
+          </div>
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900">First Name (Display Name)</label>
+            <input type="text" name="first_name" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block w-full p-2.5" placeholder="e.g. John" required />
+          </div>
+          <div>
+            <label class="block mb-2 text-sm font-bold text-gray-900">Password</label>
+            <input type="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block w-full p-2.5" required />
+          </div>
+        </div>
+        
+        <div class="flex items-center p-4 border-t border-gray-200 rounded-b bg-gray-50">
+          <button type="submit" class="w-full text-white bg-brand-600 hover:bg-brand-700 focus:ring-4 focus:outline-none focus:ring-brand-300 font-bold rounded-lg text-lg px-5 py-3 text-center transition-colors shadow-sm">
+            🚀 Generate Account
+          </button>
+        </div>
+      </form>
+      
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -87,23 +87,33 @@
             >
               Order #{{ order.client_order_number }}
             </h5>
-            <p class="text-sm font-medium text-gray-500 mb-2">
+            <p class="text-sm font-medium text-gray-500 mb-3">
               Placed on: {{ order.created_at|date:"F j, Y, g:i a" }}
             </p>
 
-            {% if order.delivery_date %}
-            <span
-              class="inline-flex items-center gap-1 bg-orange-50 text-orange-700 text-xs font-bold px-2.5 py-1 rounded-md border border-orange-200"
-            >
-              🚚 Delivery Expected: {{ order.delivery_date|date:"F j, Y" }}
-            </span>
-            {% else %}
-            <span
-              class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200"
-            >
-              ✔️ Immediate Pickup
-            </span>
-            {% endif %}
+            <!-- Badges Row -->
+            <div class="flex flex-wrap items-center gap-2">
+              {% if order.delivery_date %}
+              <span
+                class="inline-flex items-center gap-1 bg-orange-50 text-orange-700 text-xs font-bold px-2.5 py-1 rounded-md border border-orange-200"
+              >
+                🚚 Delivery Expected: {{ order.delivery_date|date:"F j, Y" }}
+              </span>
+              {% else %}
+              <span
+                class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md border border-green-200"
+              >
+                ✔️ Immediate Pickup
+              </span>
+              {% endif %}
+
+              <!-- NEW: Processed By Badge -->
+              <span
+                class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-200"
+              >
+                👤 Processed by: {% if order.salesman %}{{ order.salesman.username|title }}{% else %}Admin{% endif %}
+              </span>
+            </div>
           </div>
 
           <!-- Right: Price & CTA -->

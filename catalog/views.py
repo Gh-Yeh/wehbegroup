@@ -5,9 +5,10 @@ from decimal import Decimal
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User, Group  # NEW: Added Group here
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 
@@ -135,7 +136,7 @@ def category_list(request):
         return render(request, "catalog/category_list.html", context)
 
 
-@login_required
+# --- REMOVED @login_required TO OPEN PUBLIC CATALOG ---
 def all_items(request):
     is_ordering = request.session.get("is_ordering", False)
 
@@ -953,3 +954,93 @@ def override_item_price(request, item_id):
             )
 
     return redirect(request.META.get("HTTP_REFERER", "all_items"))
+
+# ==========================================
+# PHASE 7: ADMIN COMMAND CENTER
+# ==========================================
+@login_required
+def salesman_dashboard(request):
+    # 1. Security Check: Only Superusers (Admins) allowed
+    if not request.user.is_superuser:
+        messages.error(request, "Access Denied: Only administrators can view the Command Center.")
+        return redirect("category_list")
+
+    # 2. Fetch all users who belong to the "Salesman" security group
+    salesmen_users = User.objects.filter(groups__name="Salesman").order_by("username")
+    
+    # 3. Calculate KPIs for each Salesman
+    dashboard_data = []
+    for salesman in salesmen_users:
+        client_count = salesman.clients.count()
+        order_count = salesman.sales_orders.count()
+        
+        # Calculate Total Revenue (and clean the decimal format)
+        revenue_dict = salesman.sales_orders.aggregate(Sum("total_price"))
+        raw_revenue = revenue_dict["total_price__sum"] or Decimal("0.00")
+        total_revenue = round(raw_revenue, 2)
+        
+        # Calculate Active Margin
+        profile = getattr(salesman, "salesman_profile", None)
+        current_margin = 0
+        if profile:
+            multiplier = profile.global_multiplier
+            val = (multiplier - Decimal("1.00")) * Decimal("100.00")
+            current_margin = val.normalize()
+            
+        dashboard_data.append({
+            "user": salesman,
+            "client_count": client_count,
+            "order_count": order_count,
+            "total_revenue": total_revenue,
+            "current_margin": current_margin,
+        })
+        
+    return render(
+        request, 
+        "catalog/salesman_dashboard.html", 
+        {"dashboard_data": dashboard_data}
+    )
+
+@login_required
+def add_salesman(request):
+    if not request.user.is_superuser:
+        messages.error(request, "Access Denied: Only administrators can create accounts.")
+        return redirect("category_list")
+
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        first_name = request.POST.get("first_name", "").strip()
+        password = request.POST.get("password", "")
+
+        if not username or not password:
+            messages.error(request, "Username and Password are required.")
+            return redirect("salesman_dashboard")
+
+        try:
+            with transaction.atomic():
+                # 1. Create the user safely
+                user = User.objects.create_user(
+                    username=username,
+                    password=password,
+                    first_name=first_name,
+                    is_staff=True  # Allows them basic login
+                )
+                
+                # 2. Assign them exactly to the Salesman group
+                salesman_group, created = Group.objects.get_or_create(name="Salesman")
+                user.groups.add(salesman_group)
+
+                # 3. Build their memory profile starting at 0%
+                SalesmanProfile.objects.create(
+                    user=user,
+                    global_multiplier=Decimal("1.00")
+                )
+
+            messages.success(request, f"🎉 Success! Employee '{username}' has been generated and is ready to login.")
+            
+        except IntegrityError:
+            messages.error(request, f"Error: The username '{username}' is already taken. Please try a different login ID.")
+        except Exception as e:
+            messages.error(request, f"System Error: {str(e)}")
+
+    return redirect("salesman_dashboard")

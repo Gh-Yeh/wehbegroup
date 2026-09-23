@@ -31,6 +31,7 @@ urlpatterns = [
     path("clients/<int:client_id>/", views.client_detail, name="client_detail"),
     path("orders/<int:order_id>/", views.order_detail, name="order_detail"),
     path("orders/<int:order_id>/pdf/", views.order_pdf, name="order_pdf"),
+    
     # --- PHASE 6: SALESMAN ACTION ROUTES ---
     path("update-margin/", views.update_salesman_margin, name="update_salesman_margin"),
     path(
@@ -38,4 +39,8 @@ urlpatterns = [
         views.override_item_price,
         name="override_item_price",
     ),
+    
+    # --- PHASE 7: ADMIN COMMAND CENTER ---
+    path("command-center/", views.salesman_dashboard, name="salesman_dashboard"),
+    path("add-salesman/", views.add_salesman, name="add_salesman"),
 ]
