@@ -8,7 +8,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q, Sum
 from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.models import User, Group  # NEW: Added Group here
+from django.contrib.auth.models import User, Group
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 
@@ -63,13 +63,12 @@ def apply_salesman_prices(user, items_queryset):
 
 
 def get_salesman_margin_percentage(user):
-    """NEW: Calculates the current margin percentage to display in the HTML UI"""
+    """Calculates the current margin percentage to display in the HTML UI"""
     if not user.is_authenticated or not user.groups.filter(name="Salesman").exists():
         return 0
     profile = getattr(user, "salesman_profile", None)
     if profile:
         multiplier = profile.global_multiplier
-        # Converts 1.10 into 10, 0.95 into -5, etc. normalizes trailing zeros
         val = (multiplier - Decimal("1.00")) * Decimal("100.00")
         return val.normalize()
     return 0
@@ -116,9 +115,7 @@ def category_list(request):
         "is_ordering": is_ordering,
         "cart_items": cart_items,
         "cart_total": cart_total,
-        "current_margin": get_salesman_margin_percentage(
-            request.user
-        ),  # NEW: Pass margin to template
+        "current_margin": get_salesman_margin_percentage(request.user),
     }
 
     if query:
@@ -136,7 +133,6 @@ def category_list(request):
         return render(request, "catalog/category_list.html", context)
 
 
-# --- REMOVED @login_required TO OPEN PUBLIC CATALOG ---
 def all_items(request):
     is_ordering = request.session.get("is_ordering", False)
 
@@ -177,9 +173,7 @@ def all_items(request):
             "cart_item_ids": cart_item_ids,
             "cart_total": cart_total,
             "is_all_items_view": True,
-            "current_margin": get_salesman_margin_percentage(
-                request.user
-            ),  # NEW: Pass margin to template
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -228,9 +222,7 @@ def item_list(request, category_id):
             "cart_items": cart_items,
             "cart_item_ids": cart_item_ids,
             "cart_total": cart_total,
-            "current_margin": get_salesman_margin_percentage(
-                request.user
-            ),  # NEW: Pass margin to template
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -422,7 +414,6 @@ def sync_inventory(request):
 
     if request.method == "POST":
         excel_file = request.FILES.get("excel_file")
-
         reset_salesman_prices = request.POST.get("reset_salesman_prices") == "on"
 
         if not excel_file:
@@ -437,7 +428,6 @@ def sync_inventory(request):
 
         try:
             with transaction.atomic():
-
                 if reset_salesman_prices:
                     SalesmanPriceOverride.objects.all().delete()
                     SalesmanProfile.objects.update(global_multiplier=Decimal("1.00"))
@@ -458,15 +448,39 @@ def sync_inventory(request):
 
                 headers = [str(col).upper().strip() if col else "" for col in rows[0]]
 
-                try:
-                    code_idx = headers.index("CODE")
-                    item_idx = headers.index("ITEM")
-                    qtnet_idx = headers.index("QTNET")
-                    salepr_idx = headers.index("SALEPR")
-                except ValueError:
+                # Helper to match column headers across changing FoxPro exports
+                def get_column_index(candidates, header_list):
+                    for name in candidates:
+                        if name in header_list:
+                            return header_list.index(name)
+                    return None
+
+                code_idx = get_column_index(["CODE", "BARCODE"], headers)
+                item_idx = get_column_index(["ITEM", "NAME", "DESCRIPTION"], headers)
+                qtnet_idx = get_column_index(["QTNET", "STOCK", "QTY", "QUANTITY"], headers)
+                salepr_idx = get_column_index(
+                    ["SALE_PRICE", "SALEPR", "SALE_PRICESALE_PRICE", "SALE PRICE", "PRICE"],
+                    headers,
+                )
+
+                if (
+                    code_idx is None
+                    or item_idx is None
+                    or qtnet_idx is None
+                    or salepr_idx is None
+                ):
+                    missing = []
+                    if code_idx is None:
+                        missing.append("CODE")
+                    if item_idx is None:
+                        missing.append("ITEM")
+                    if qtnet_idx is None:
+                        missing.append("QTNET")
+                    if salepr_idx is None:
+                        missing.append("SALE_PRICE/SALEPR")
                     messages.error(
                         request,
-                        "Missing required columns. Ensure CODE, ITEM, QTNET, and SALEPR exist.",
+                        f"Missing required columns: {', '.join(missing)}. Please verify the Excel headers.",
                     )
                     return redirect("sync_inventory")
 
@@ -528,27 +542,33 @@ def sync_inventory(request):
                             if item.is_active:
                                 items_updated += 1
                     else:
+                        # Isolated Savepoint 1
                         try:
-                            Item.objects.create(
-                                name=raw_name,
-                                category=uncategorized_folder,
-                                barcode=raw_code,
-                                stock_quantity=stock,
-                                price=price,
-                                is_active=False,
-                            )
+                            with transaction.atomic():
+                                Item.objects.create(
+                                    name=raw_name,
+                                    category=uncategorized_folder,
+                                    barcode=raw_code,
+                                    stock_quantity=stock,
+                                    price=price,
+                                    is_active=False,
+                                )
                         except IntegrityError:
-                            Item.objects.create(
-                                name=f"{raw_name} ({raw_code})",
-                                category=uncategorized_folder,
-                                barcode=raw_code,
-                                stock_quantity=stock,
-                                price=price,
-                                is_active=False,
-                            )
+                            # Isolated Savepoint 2: Duplicate name fallback
+                            try:
+                                with transaction.atomic():
+                                    Item.objects.create(
+                                        name=f"{raw_name} ({raw_code})",
+                                        category=uncategorized_folder,
+                                        barcode=raw_code,
+                                        stock_quantity=stock,
+                                        price=price,
+                                        is_active=False,
+                                    )
+                            except IntegrityError:
+                                pass
 
                 uncategorized_folder.items.exclude(barcode__in=synced_barcodes).delete()
-
                 uncategorized_count = uncategorized_folder.items.count()
 
                 success_msg = f"🚀 Sync Complete! {items_updated} items updated. {uncategorized_count} sitting in 'Uncategorized'."
@@ -715,7 +735,7 @@ def checkout(request):
             "cart_items": cart_items,
             "cart_total": cart_total,
             "clients": clients,
-            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -737,7 +757,7 @@ def client_list(request):
         "catalog/client_list.html",
         {
             "clients": clients,
-            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -765,7 +785,7 @@ def client_detail(request, client_id):
         {
             "client": client,
             "orders": orders,
-            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -792,7 +812,7 @@ def order_detail(request, order_id):
             "order": order,
             "order_items": order_items,
             "client_order_number": client_order_number,
-            "current_margin": get_salesman_margin_percentage(request.user),  # NEW
+            "current_margin": get_salesman_margin_percentage(request.user),
         },
     )
 
@@ -871,7 +891,6 @@ def update_salesman_margin(request):
         action = request.POST.get("action", "update")
 
         if action == "reset_all":
-            # --- NEW: PANIC BUTTON LOGIC ---
             with transaction.atomic():
                 SalesmanPriceOverride.objects.filter(salesman=request.user).delete()
                 profile, created = SalesmanProfile.objects.get_or_create(
@@ -911,7 +930,6 @@ def override_item_price(request, item_id):
         request.method == "POST"
         and request.user.groups.filter(name="Salesman").exists()
     ):
-        # We fetch the exact, un-modified Master Price from the DB
         item = get_object_or_404(Item, id=item_id)
         action = request.POST.get("action")
 
@@ -931,7 +949,6 @@ def override_item_price(request, item_id):
                 messages.error(request, "Invalid price format.")
 
         elif action == "reset_to_margin":
-            # --- NEW: BLUE BUTTON (Delete Lock, let Global Margin take over) ---
             SalesmanPriceOverride.objects.filter(
                 salesman=request.user, item=item
             ).delete()
@@ -942,7 +959,6 @@ def override_item_price(request, item_id):
             )
 
         elif action == "reset_to_main":
-            # --- NEW: RED BUTTON (Lock to exact Admin Price) ---
             SalesmanPriceOverride.objects.update_or_create(
                 salesman=request.user,
                 item=item,
@@ -955,56 +971,59 @@ def override_item_price(request, item_id):
 
     return redirect(request.META.get("HTTP_REFERER", "all_items"))
 
+
 # ==========================================
 # PHASE 7: ADMIN COMMAND CENTER
 # ==========================================
 @login_required
 def salesman_dashboard(request):
-    # 1. Security Check: Only Superusers (Admins) allowed
     if not request.user.is_superuser:
-        messages.error(request, "Access Denied: Only administrators can view the Command Center.")
+        messages.error(
+            request, "Access Denied: Only administrators can view the Command Center."
+        )
         return redirect("category_list")
 
-    # 2. Fetch all users who belong to the "Salesman" security group
     salesmen_users = User.objects.filter(groups__name="Salesman").order_by("username")
-    
-    # 3. Calculate KPIs for each Salesman
+
     dashboard_data = []
     for salesman in salesmen_users:
         client_count = salesman.clients.count()
         order_count = salesman.sales_orders.count()
-        
-        # Calculate Total Revenue (and clean the decimal format)
+
         revenue_dict = salesman.sales_orders.aggregate(Sum("total_price"))
         raw_revenue = revenue_dict["total_price__sum"] or Decimal("0.00")
         total_revenue = round(raw_revenue, 2)
-        
-        # Calculate Active Margin
+
         profile = getattr(salesman, "salesman_profile", None)
         current_margin = 0
         if profile:
             multiplier = profile.global_multiplier
             val = (multiplier - Decimal("1.00")) * Decimal("100.00")
             current_margin = val.normalize()
-            
-        dashboard_data.append({
-            "user": salesman,
-            "client_count": client_count,
-            "order_count": order_count,
-            "total_revenue": total_revenue,
-            "current_margin": current_margin,
-        })
-        
+
+        dashboard_data.append(
+            {
+                "user": salesman,
+                "client_count": client_count,
+                "order_count": order_count,
+                "total_revenue": total_revenue,
+                "current_margin": current_margin,
+            }
+        )
+
     return render(
-        request, 
-        "catalog/salesman_dashboard.html", 
-        {"dashboard_data": dashboard_data}
+        request,
+        "catalog/salesman_dashboard.html",
+        {"dashboard_data": dashboard_data},
     )
+
 
 @login_required
 def add_salesman(request):
     if not request.user.is_superuser:
-        messages.error(request, "Access Denied: Only administrators can create accounts.")
+        messages.error(
+            request, "Access Denied: Only administrators can create accounts."
+        )
         return redirect("category_list")
 
     if request.method == "POST":
@@ -1018,28 +1037,31 @@ def add_salesman(request):
 
         try:
             with transaction.atomic():
-                # 1. Create the user safely
                 user = User.objects.create_user(
                     username=username,
                     password=password,
                     first_name=first_name,
-                    is_staff=True  # Allows them basic login
+                    is_staff=True,
                 )
-                
-                # 2. Assign them exactly to the Salesman group
+
                 salesman_group, created = Group.objects.get_or_create(name="Salesman")
                 user.groups.add(salesman_group)
 
-                # 3. Build their memory profile starting at 0%
                 SalesmanProfile.objects.create(
                     user=user,
-                    global_multiplier=Decimal("1.00")
+                    global_multiplier=Decimal("1.00"),
                 )
 
-            messages.success(request, f"🎉 Success! Employee '{username}' has been generated and is ready to login.")
-            
+            messages.success(
+                request,
+                f"🎉 Success! Employee '{username}' has been generated and is ready to login.",
+            )
+
         except IntegrityError:
-            messages.error(request, f"Error: The username '{username}' is already taken. Please try a different login ID.")
+            messages.error(
+                request,
+                f"Error: The username '{username}' is already taken. Please try a different login ID.",
+            )
         except Exception as e:
             messages.error(request, f"System Error: {str(e)}")
 
