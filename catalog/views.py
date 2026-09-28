@@ -183,7 +183,8 @@ def item_list(request, category_id):
     category = get_object_or_404(Category, id=category_id)
 
     if request.user.is_authenticated and category.name == "Uncategorized":
-        items_qs = category.items.all().order_by(Lower("name"))
+        # NEW: Sort by stock_quantity (highest first), then alphabetically
+        items_qs = category.items.all().order_by('-stock_quantity', Lower("name"))
     else:
         items_qs = category.items.filter(is_active=True).order_by(Lower("name"))
 
