@@ -87,9 +87,14 @@
             <li>
               <a
                 href="{% url 'all_items' %}"
-                class="block py-2 px-3 text-gray-900 rounded hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-brand-600 md:p-0"
-                >All Items</a
-              >
+                class="py-2 px-3 text-gray-900 rounded hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-brand-600 md:p-0 flex items-center gap-1.5"
+                >All Items
+                {% if nav_item_count is not None %}
+                  <span class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full">
+                    {{ nav_item_count }}
+                  </span>
+                {% endif %}
+              </a>
             </li>
 
             <!-- Visible to all logged in users (Admins & Salesmen) -->

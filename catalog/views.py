@@ -74,6 +74,14 @@ def get_salesman_margin_percentage(user):
     return 0
 
 
+def get_nav_item_count(request):
+    """NEW: Calculates the total active items for the navbar badge, respecting the stock filter."""
+    in_stock_only = request.GET.get("in_stock") == "true"
+    if in_stock_only:
+        return Item.objects.filter(is_active=True, stock_quantity__gt=0).count()
+    return Item.objects.filter(is_active=True).count()
+
+
 # ==========================================
 # MAIN VIEWS
 # ==========================================
@@ -116,6 +124,7 @@ def category_list(request):
         "cart_items": cart_items,
         "cart_total": cart_total,
         "current_margin": get_salesman_margin_percentage(request.user),
+        "nav_item_count": get_nav_item_count(request),
     }
 
     if query:
@@ -135,8 +144,13 @@ def category_list(request):
 
 def all_items(request):
     is_ordering = request.session.get("is_ordering", False)
+    in_stock_only = request.GET.get("in_stock") == "true"
 
-    items_qs = Item.objects.filter(is_active=True).order_by(Lower("name"))
+    items_qs = Item.objects.filter(is_active=True)
+    if in_stock_only:
+        items_qs = items_qs.filter(stock_quantity__gt=0)
+        
+    items_qs = items_qs.order_by(Lower("name"))
     items = apply_salesman_prices(request.user, items_qs)
 
     cart = request.session.get("ticket_cart", {})
@@ -173,7 +187,9 @@ def all_items(request):
             "cart_item_ids": cart_item_ids,
             "cart_total": cart_total,
             "is_all_items_view": True,
+            "in_stock_only": in_stock_only,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -181,12 +197,18 @@ def all_items(request):
 def item_list(request, category_id):
     is_ordering = request.session.get("is_ordering", False)
     category = get_object_or_404(Category, id=category_id)
+    in_stock_only = request.GET.get("in_stock") == "true"
 
     if request.user.is_authenticated and category.name == "Uncategorized":
-        # NEW: Sort by stock_quantity (highest first), then alphabetically
-        items_qs = category.items.all().order_by('-stock_quantity', Lower("name"))
+        items_qs = category.items.all()
+        if in_stock_only:
+            items_qs = items_qs.filter(stock_quantity__gt=0)
+        items_qs = items_qs.order_by('-stock_quantity', Lower("name"))
     else:
-        items_qs = category.items.filter(is_active=True).order_by(Lower("name"))
+        items_qs = category.items.filter(is_active=True)
+        if in_stock_only:
+            items_qs = items_qs.filter(stock_quantity__gt=0)
+        items_qs = items_qs.order_by(Lower("name"))
 
     items = apply_salesman_prices(request.user, items_qs)
 
@@ -223,7 +245,9 @@ def item_list(request, category_id):
             "cart_items": cart_items,
             "cart_item_ids": cart_item_ids,
             "cart_total": cart_total,
+            "in_stock_only": in_stock_only,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -337,7 +361,12 @@ def edit_item(request, item_id):
     return render(
         request,
         "catalog/edit_item.html",
-        {"form": form, "item": item, "suggestions": suggestions},
+        {
+            "form": form, 
+            "item": item, 
+            "suggestions": suggestions,
+            "nav_item_count": get_nav_item_count(request)
+        },
     )
 
 
@@ -376,7 +405,12 @@ def duplicate_category(request, category_id):
         return redirect("item_list", category_id=new_category.id)
 
     return render(
-        request, "catalog/duplicate_category.html", {"category": original_category}
+        request, 
+        "catalog/duplicate_category.html", 
+        {
+            "category": original_category,
+            "nav_item_count": get_nav_item_count(request)
+        }
     )
 
 
@@ -449,7 +483,6 @@ def sync_inventory(request):
 
                 headers = [str(col).upper().strip() if col else "" for col in rows[0]]
 
-                # Helper to match column headers across changing FoxPro exports
                 def get_column_index(candidates, header_list):
                     for name in candidates:
                         if name in header_list:
@@ -543,7 +576,6 @@ def sync_inventory(request):
                             if item.is_active:
                                 items_updated += 1
                     else:
-                        # Isolated Savepoint 1
                         try:
                             with transaction.atomic():
                                 Item.objects.create(
@@ -555,7 +587,6 @@ def sync_inventory(request):
                                     is_active=False,
                                 )
                         except IntegrityError:
-                            # Isolated Savepoint 2: Duplicate name fallback
                             try:
                                 with transaction.atomic():
                                     Item.objects.create(
@@ -584,7 +615,11 @@ def sync_inventory(request):
 
         return redirect("sync_inventory")
 
-    return render(request, "catalog/upload_inventory.html")
+    return render(
+        request, 
+        "catalog/upload_inventory.html",
+        {"nav_item_count": get_nav_item_count(request)}
+    )
 
 
 # ==========================================
@@ -737,6 +772,7 @@ def checkout(request):
             "cart_total": cart_total,
             "clients": clients,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -759,6 +795,7 @@ def client_list(request):
         {
             "clients": clients,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -787,6 +824,7 @@ def client_detail(request, client_id):
             "client": client,
             "orders": orders,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -814,6 +852,7 @@ def order_detail(request, order_id):
             "order_items": order_items,
             "client_order_number": client_order_number,
             "current_margin": get_salesman_margin_percentage(request.user),
+            "nav_item_count": get_nav_item_count(request),
         },
     )
 
@@ -1015,7 +1054,10 @@ def salesman_dashboard(request):
     return render(
         request,
         "catalog/salesman_dashboard.html",
-        {"dashboard_data": dashboard_data},
+        {
+            "dashboard_data": dashboard_data,
+            "nav_item_count": get_nav_item_count(request),
+        },
     )
 
 
